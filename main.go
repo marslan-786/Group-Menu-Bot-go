@@ -25,12 +25,11 @@ var client *whatsmeow.Client
 var container *sqlstore.Container
 
 func main() {
-	fmt.Println("🚀 [Impossible Bot] Initializing Verbose Engine...")
+	fmt.Println("🚀 [Impossible Bot] Initializing with Corrected Field Names...")
 
 	dbURL := os.Getenv("DATABASE_URL")
 	dbType := "postgres"
 	if dbURL == "" {
-		fmt.Println("⚠️ [DB] No DATABASE_URL found, using local SQLite")
 		dbURL = "file:impossible_session.db?_foreign_keys=on"
 		dbType = "sqlite3"
 	}
@@ -57,12 +56,11 @@ func main() {
 	r.POST("/api/pair", handlePairAPI)
 
 	go func() {
-		fmt.Printf("🌐 [Server] Listening on port %s\n", port)
+		fmt.Printf("🌐 [Server] Live at Port %s\n", port)
 		r.Run(":" + port)
 	}()
 
 	if client.Store.ID != nil {
-		fmt.Println("🔄 [System] Resuming previous session...")
 		client.Connect()
 	}
 
@@ -85,42 +83,33 @@ func eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		if v.Info.IsFromMe { return }
-
 		body := strings.TrimSpace(getMessageText(v.Message))
-		fmt.Printf("📩 [Log] Incoming Message | From: %s | Text: %s\n", v.Info.Sender.User, body)
-
+		
 		if body == "#menu" {
-			fmt.Println("⚙️ [Action] Command #menu identified.")
-			
-			// ری ایکشن دیں
+			fmt.Println("📩 [Command] #menu detected.")
 			_, _ = client.SendMessage(context.Background(), v.Info.Chat, client.BuildReaction(v.Info.Chat, v.Info.Sender, v.Info.ID, "📜"))
-			
 			sendMenuWithImage(v.Info.Chat)
 		}
 	}
 }
 
 func sendMenuWithImage(chat types.JID) {
-	fmt.Println("🖼️ [Media] Reading pic.png from ./web/ folder...")
 	imgData, err := os.ReadFile("./web/pic.png")
 	if err != nil {
-		fmt.Printf("❌ [File Error] Failed to read pic.png: %v\n", err)
-		client.SendMessage(context.Background(), chat, &waProto.Message{Conversation: proto.String("*📜 MENU*\nImage file missing.")})
+		fmt.Printf("❌ [Error] pic.png missing: %v\n", err)
 		return
 	}
 
-	// واٹس ایپ سرور پر تصویر اپلوڈ کرنا
-	fmt.Println("📤 [Upload] Sending image to WhatsApp Media Servers...")
+	fmt.Println("📤 [Upload] Starting media upload...")
 	uploadResp, err := client.Upload(context.Background(), imgData, whatsmeow.MediaImage)
 	if err != nil {
-		fmt.Printf("❌ [Upload Error] Media upload failed: %v\n", err)
+		fmt.Printf("❌ [Upload Error] %v\n", err)
 		return
 	}
 
-	// لسٹ مینیو بٹن
 	listMsg := &waProto.ListMessage{
 		Title:       proto.String("IMPOSSIBLE BOT"),
-		Description: proto.String("Select a command below:"),
+		Description: proto.String("Select a command:"),
 		ButtonText:  proto.String("MENU"),
 		ListType:    waProto.ListMessage_SINGLE_SELECT.Enum(),
 		Sections: []*waProto.ListMessage_Section{
@@ -128,37 +117,34 @@ func sendMenuWithImage(chat types.JID) {
 				Title: proto.String("TOOLS"),
 				Rows: []*waProto.ListMessage_Row{
 					{Title: proto.String("Ping Status"), RowID: proto.String("ping")},
-					{Title: proto.String("Check ID"), RowID: proto.String("id")},
+					{Title: proto.String("User Info"), RowID: proto.String("id")},
 				},
 			},
 		},
 	}
 
-	// امیج میسج بنانا
+	// فکسڈ: تمام فیلڈز اب بڑے حروف (UPPERCASE) میں ہیں جیسا کہ لاگز میں مانگا گیا تھا
 	imageMsg := &waProto.ImageMessage{
 		Mimetype:      proto.String("image/png"),
-		Caption:       proto.String("*📜 IMPOSSIBLE MENU*\n\nHi! Use the button below to see commands."),
-		Url:           &uploadResp.URL,
+		Caption:       proto.String("*📜 IMPOSSIBLE MENU*\n\nPowered by Go Engine"),
+		URL:           &uploadResp.URL,           // فکسڈ
 		DirectPath:    &uploadResp.DirectPath,
 		MediaKey:      uploadResp.MediaKey,
-		FileEncSha256: uploadResp.FileEncSha256,
-		FileSha256:    uploadResp.FileSha256,
+		FileEncSHA256: uploadResp.FileEncSHA256, // فکسڈ
+		FileSHA256:    uploadResp.FileSHA256,    // فکسڈ
 		FileLength:    proto.Uint64(uint64(len(imgData))),
 	}
 
-	// مکمل میسج جس میں تصویر اور مینیو دونوں ہوں
 	msg := &waProto.Message{
 		ImageMessage: imageMsg,
 		ListMessage:  listMsg,
 	}
 
-	fmt.Println("📧 [Delivery] Sending full menu bundle...")
 	resp, sendErr := client.SendMessage(context.Background(), chat, msg)
-	
 	if sendErr != nil {
-		fmt.Printf("❌ [Send Error] Deliver failed: %v\n", sendErr)
+		fmt.Printf("❌ [Send Error] %v\n", sendErr)
 	} else {
-		fmt.Printf("✅ [Delivery] Sent! Message ID: %s\n", resp.ID)
+		fmt.Printf("✅ [Success] Menu delivered: %s\n", resp.ID)
 	}
 }
 
@@ -167,8 +153,6 @@ func handlePairAPI(c *gin.Context) {
 	c.BindJSON(&req)
 	cleanNum := strings.ReplaceAll(req.Number, "+", "")
 	
-	fmt.Printf("🧹 [Security] Fresh pairing for: %s\n", cleanNum)
-
 	devices, _ := container.GetAllDevices(context.Background())
 	for _, dev := range devices {
 		if dev.ID != nil && strings.Contains(dev.ID.User, cleanNum) {
