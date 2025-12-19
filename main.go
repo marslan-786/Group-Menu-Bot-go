@@ -24,27 +24,31 @@ import (
 var client *whatsmeow.Client
 
 func main() {
-	fmt.Println("🚀 Starting Impossible Bot Engine...")
+	fmt.Println("🚀 [System] Starting Engine with Full Debug Logging...")
 
-	// ڈیٹا بیس سیٹ اپ
 	dbURL := os.Getenv("DATABASE_URL")
 	dbType := "postgres"
 	if dbURL == "" {
+		fmt.Println("⚠️ [DB] DATABASE_URL missing, using local SQLite.")
 		dbURL = "file:impossible_session.db?_foreign_keys=on"
 		dbType = "sqlite3"
 	}
 
-	dbLog := waLog.Stdout("Database", "INFO", true)
+	dbLog := waLog.Stdout("Database", "DEBUG", true) // ڈیبگ موڈ آن
 	container, err := sqlstore.New(context.Background(), dbType, dbURL, dbLog)
-	if err != nil { panic(err) }
+	if err != nil {
+		fmt.Printf("❌ [DB ERROR] %v\n", err)
+		panic(err)
+	}
 
 	deviceStore, err := container.GetFirstDevice(context.Background())
-	if err != nil { panic(err) }
+	if err != nil {
+		panic(err)
+	}
 
-	client = whatsmeow.NewClient(deviceStore, waLog.Stdout("Client", "INFO", true))
+	client = whatsmeow.NewClient(deviceStore, waLog.Stdout("Client", "DEBUG", true)) // کلائنٹ ڈیبگ آن
 	client.AddEventHandler(eventHandler)
 
-	// ویب سرور
 	port := os.Getenv("PORT")
 	if port == "" { port = "8080" }
 	
@@ -53,46 +57,44 @@ func main() {
 	r.StaticFile("/", "./web/index.html")
 	r.StaticFile("/pic.png", "./web/pic.png")
 
+	// پیرنگ لاجک بمعہ تفصیلی لاگز
 	r.POST("/api/pair", func(c *gin.Context) {
 		var req struct{ Number string `json:"number"` }
-		if err := c.BindJSON(&req); err != nil {
-			c.JSON(400, gin.H{"error": "Invalid input"})
-			return
-		}
+		c.BindJSON(&req)
+		
+		fmt.Printf("📲 [Request] Pairing request for number: %s\n", req.Number)
 
-		// کنکشن گارڈ: اگر کنیکٹ نہیں ہے تو کریں
 		if !client.IsConnected() {
-			client.Connect()
-			// واٹس ایپ کو ریڈی ہونے کے لیے وقت دیں
-			time.Sleep(5 * time.Second) 
-		}
-
-		// پیرنگ کوڈ جنریٹ کرنے کی کوشش (بشمول ری ٹرائی لاجک)
-		var code string
-		var pairErr error
-		for i := 0; i < 3; i++ { // 3 بار کوشش کریں
-			code, pairErr = client.PairPhone(context.Background(), req.Number, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
-			if pairErr == nil {
-				break
+			fmt.Println("🌐 [Network] Connecting to WhatsApp...")
+			err := client.Connect()
+			if err != nil {
+				fmt.Printf("❌ [Network Error] Connection failed: %v\n", err)
+				c.JSON(500, gin.H{"error": "WhatsApp link failure"})
+				return
 			}
-			fmt.Printf("⚠️ Retrying Pairing... (%d/3)\n", i+1)
-			time.Sleep(3 * time.Second)
+			time.Sleep(7 * time.Second) // واٹس ایپ کو مستحکم ہونے کے لیے زیادہ وقت دیں
 		}
 
-		if pairErr != nil {
-			c.JSON(500, gin.H{"error": "Connection unstable. Please refresh page and try again."})
+		fmt.Println("🔑 [Auth] Requesting Pairing Code from Server...")
+		code, err := client.PairPhone(context.Background(), req.Number, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		
+		if err != nil {
+			fmt.Printf("❌ [Pairing Error Detail] %v\n", err) // اصل ایرر یہاں پرنٹ ہوگا
+			c.JSON(500, gin.H{"error": fmt.Sprintf("Failed: %v", err)})
 			return
 		}
 
+		fmt.Printf("✅ [Success] Generated Code: %s\n", code)
 		c.JSON(200, gin.H{"code": code})
 	})
 
 	go func() {
-		fmt.Printf("🌐 Web Dashboard live on port %s\n", port)
+		fmt.Printf("🌐 [Web] Dashboard: http://0.0.0.0:%s\n", port)
 		r.Run(":" + port)
 	}()
 
 	if client.Store.ID != nil {
+		fmt.Println("🔄 [Session] Restoring existing login...")
 		client.Connect()
 	}
 
@@ -106,10 +108,7 @@ func eventHandler(evt interface{}) {
 	switch v := evt.(type) {
 	case *events.Message:
 		body := v.Message.GetConversation()
-		if body == "" {
-			body = v.Message.GetExtendedTextMessage().GetText()
-		}
-
+		if body == "" { body = v.Message.GetExtendedTextMessage().GetText() }
 		if strings.TrimSpace(body) == "#menu" {
 			sendOfficialMenu(v.Info.Chat)
 		}
@@ -117,18 +116,16 @@ func eventHandler(evt interface{}) {
 }
 
 func sendOfficialMenu(chat types.JID) {
-	// واٹس ایپ MENU بٹن (List Message)
 	listMsg := &waProto.ListMessage{
-		Title:       proto.String("IMPOSSIBLE BOT MENU"),
-		Description: proto.String("Select a command category below"),
+		Title:       proto.String("IMPOSSIBLE MENU"),
+		Description: proto.String("Select category"),
 		ButtonText:  proto.String("MENU"),
 		ListType:    waProto.ListMessage_SINGLE_SELECT.Enum(),
 		Sections: []*waProto.ListMessage_Section{
 			{
-				Title: proto.String("AVAILABLE TOOLS"),
+				Title: proto.String("TOOLS"),
 				Rows: []*waProto.ListMessage_Row{
-					{Title: proto.String("Ping Status"), RowID: proto.String("ping")},
-					{Title: proto.String("Check ID"), RowID: proto.String("id")},
+					{Title: proto.String("Ping"), RowID: proto.String("ping")},
 				},
 			},
 		},
