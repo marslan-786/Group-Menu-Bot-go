@@ -218,20 +218,37 @@ func handlePairAPI(c *gin.Context) {
 		return
 	}
 
+	// Clean phone number - remove all non-digits
 	number := strings.ReplaceAll(req.Number, "+", "")
+	number = strings.ReplaceAll(number, " ", "")
+	number = strings.ReplaceAll(number, "-", "")
 	number = strings.TrimSpace(number)
 
-	// Connect only when pairing is requested
-	if !client.IsConnected() {
-		fmt.Println("🔌 Connecting to WhatsApp...")
-		err := client.Connect()
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to connect: " + err.Error()})
-			return
-		}
-		// Wait for connection to stabilize
-		time.Sleep(3 * time.Second)
+	// Validate number
+	if len(number) < 10 || len(number) > 15 {
+		c.JSON(400, gin.H{"error": "Invalid phone number length"})
+		return
 	}
+
+	fmt.Printf("📱 Processing number: %s\n", number)
+
+	// Disconnect if already connected to start fresh
+	if client.IsConnected() {
+		client.Disconnect()
+		time.Sleep(1 * time.Second)
+	}
+
+	// Connect to WhatsApp
+	fmt.Println("🔌 Connecting to WhatsApp...")
+	err := client.Connect()
+	if err != nil {
+		fmt.Printf("❌ Connection error: %v\n", err)
+		c.JSON(500, gin.H{"error": "Failed to connect: " + err.Error()})
+		return
+	}
+
+	// Wait for connection to stabilize
+	time.Sleep(10 * time.Second)
 
 	fmt.Printf("📱 Generating pairing code for: %s\n", number)
 	code, err := client.PairPhone(
@@ -239,9 +256,10 @@ func handlePairAPI(c *gin.Context) {
 		number,
 		true,
 		whatsmeow.PairClientChrome,
-		"Chrome Linux",
+		"Chrome (Linux)",
 	)
 	if err != nil {
+		fmt.Printf("❌ Pairing error: %v\n", err)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
