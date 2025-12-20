@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,14 +16,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"go.mau.fi/whatsmeow"
-	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
-
-	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -38,6 +37,7 @@ var (
 func main() {
 	fmt.Println("🚀 IMPOSSIBLE BOT | START")
 
+	// ------------------- DB SETUP -------------------
 	dbURL := os.Getenv("DATABASE_URL")
 	dbType := "postgres"
 	if dbURL == "" {
@@ -53,10 +53,10 @@ func main() {
 		waLog.Stdout("DB", "INFO", true),
 	)
 	if err != nil {
-		panic(err)
+		log.Fatalf("DB error: %v", err)
 	}
 
-	// 🔐 SAFE SESSION ISOLATION
+	// ------------------- DEVICE SETUP -------------------
 	var device *store.Device
 	devices, _ := container.GetAllDevices(context.Background())
 	for _, d := range devices {
@@ -74,24 +74,34 @@ func main() {
 	client = whatsmeow.NewClient(device, waLog.Stdout("Client", "INFO", true))
 	client.AddEventHandler(eventHandler)
 
+	// Connect if device ID exists
 	if client.Store.ID != nil {
-		client.Connect()
+		err = client.Connect()
+		if err != nil {
+			log.Fatalf("Failed to connect: %v", err)
+		}
 		fmt.Println("✅ Session restored")
 	}
 
-	// 🌐 WEB + API
+	// ------------------- WEB SERVER -------------------
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+	r.LoadHTMLGlob("web/*.html")
 
-	// Static website
-	r.StaticFile("/", "./web/index.html")
+	// Home page
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", gin.H{
+			"paired": client.Store.ID != nil,
+		})
+	})
 
-	// Pair API
+	// API to get pairing code
 	r.POST("/api/pair", handlePairAPI)
 
 	go r.Run(":8080")
+	fmt.Println("🌐 Web server running at http://localhost:8080")
 
-	// Shutdown
+	// ------------------- GRACEFUL SHUTDOWN -------------------
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
@@ -109,25 +119,24 @@ func eventHandler(evt interface{}) {
 
 		text := strings.ToLower(strings.TrimSpace(getText(v.Message)))
 
-		if text == "#menu" {
+		switch text {
+		case "#menu":
 			sendMenu(v.Info.Chat)
-		}
-
-		if text == "#ping" {
+		case "#ping":
 			sendPing(v.Info.Chat)
 		}
 	}
 }
 
-func getText(msg *waProto.Message) string {
+func getText(msg *whatsmeow.ProtoMessage) string {
 	if msg == nil {
 		return ""
 	}
 	if msg.Conversation != nil {
-		return msg.GetConversation()
+		return *msg.Conversation
 	}
 	if msg.ExtendedTextMessage != nil {
-		return msg.ExtendedTextMessage.GetText()
+		return msg.ExtendedTextMessage.Text
 	}
 	return ""
 }
@@ -135,25 +144,25 @@ func getText(msg *waProto.Message) string {
 // ================= MENU =================
 
 func sendMenu(chat types.JID) {
-	menu := &waProto.ListMessage{
-		Title:       proto.String("IMPOSSIBLE MENU"),
-		Description: proto.String("Select an option"),
-		ButtonText:  proto.String("Open Menu"),
-		ListType:    waProto.ListMessage_SINGLE_SELECT.Enum(),
-		Sections: []*waProto.ListMessage_Section{
+	menu := &whatsmeow.ProtoListMessage{
+		Title:       "IMPOSSIBLE MENU",
+		Description: "Select an option",
+		ButtonText:  "Open Menu",
+		ListType:    whatsmeow.ListMessage_SINGLE_SELECT,
+		Sections: []*whatsmeow.ProtoListMessageSection{
 			{
-				Title: proto.String("COMMANDS"),
-				Rows: []*waProto.ListMessage_Row{
+				Title: "COMMANDS",
+				Rows: []*whatsmeow.ProtoListMessageRow{
 					{
-						RowID: proto.String("ping"),
-						Title: proto.String("Ping"),
+						RowID: "ping",
+						Title: "Ping",
 					},
 				},
 			},
 		},
 	}
 
-	client.SendMessage(context.Background(), chat, &waProto.Message{
+	client.SendMessage(context.Background(), chat, &whatsmeow.ProtoMessage{
 		ListMessage: menu,
 	})
 }
@@ -163,7 +172,6 @@ func sendMenu(chat types.JID) {
 func sendPing(chat types.JID) {
 	start := time.Now()
 	time.Sleep(20 * time.Millisecond)
-
 	ms := time.Since(start).Milliseconds()
 	uptime := time.Since(startTime).Round(time.Second)
 
@@ -182,8 +190,8 @@ func sendPing(chat types.JID) {
 		uptime,
 	)
 
-	client.SendMessage(context.Background(), chat, &waProto.Message{
-		Conversation: proto.String(msg),
+	client.SendMessage(context.Background(), chat, &whatsmeow.ProtoMessage{
+		Conversation: &msg,
 	})
 }
 
