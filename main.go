@@ -7,13 +7,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
+	"strings"
 	"syscall"
 	"time"
-	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/gorilla/websocket"
 	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 
@@ -21,227 +19,275 @@ import (
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"google.golang.org/protobuf/proto"
 )
 
-// --- 🌐 GLOBAL VARIABLES ---
+const (
+	BOT_TAG  = "IMPOSSIBLE_STABLE_V1"
+	DEV_NAME = "Nothing Is Impossible"
+)
+
 var (
-	container   *sqlstore.Container
-	clientMap   = make(map[string]*whatsmeow.Client)
-	clientMutex sync.RWMutex
-	
-	// MongoDB
-	mongoClient *mongo.Client
-	mongoColl   *mongo.Collection
-	
-	// WebSocket
-	wsupgrader = websocket.Upgrader{
-		ReadBufferSize:   1024,
-		WriteBufferSize:  1024,
-		HandshakeTimeout: 10 * time.Second,
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
-	clients = make(map[*websocket.Conn]bool)
-	wsMutex sync.Mutex
+	client    *whatsmeow.Client
+	container *sqlstore.Container
+	startTime = time.Now()
 )
 
-// --- 🚀 MAIN START ---
 func main() {
-	fmt.Println("🚀 IMPOSSIBLE BOT FINAL V4 | STARTING SYSTEM...")
+	fmt.Println("🚀 IMPOSSIBLE BOT | START")
 
-	// 1. Connect MongoDB
-	connectMongo()
-	loadDataFromMongo()
-
-	// 2. Setup SQL Store
+	// ------------------- DB SETUP -------------------
 	dbURL := os.Getenv("DATABASE_URL")
 	dbType := "postgres"
 	if dbURL == "" {
 		dbType = "sqlite3"
-		dbURL = "file:impossible_sessions.db?_foreign_keys=on"
-		fmt.Println("⚠️ Using SQLite. Set DATABASE_URL for Production.")
-	} else {
-		fmt.Println("✅ Using PostgreSQL for Sessions.")
+		dbURL = "file:impossible.db?_foreign_keys=on"
 	}
 
-	dbLog := waLog.Stdout("DB", "INFO", true)
 	var err error
-	container, err = sqlstore.New(context.Background(), dbType, dbURL, dbLog)
+	container, err = sqlstore.New(
+		context.Background(),
+		dbType,
+		dbURL,
+		waLog.Stdout("DB", "INFO", true),
+	)
 	if err != nil {
-		log.Fatalf("❌ DB Error: %v", err)
+		log.Fatalf("DB error: %v", err)
 	}
 
-	// 3. Restore Sessions
-	devices, err := container.GetAllDevices(context.Background())
-	if err == nil {
-		fmt.Printf("🔄 Restoring %d sessions...\n", len(devices))
-		for _, device := range devices {
-			go connectClient(device)
+	// ------------------- DEVICE SETUP -------------------
+	var device *store.Device
+	devices, _ := container.GetAllDevices(context.Background())
+	
+	// Get the most recent device (last paired)
+	if len(devices) > 0 {
+		device = devices[len(devices)-1]
+		fmt.Printf("📱 Found existing device: %s\n", device.PushName)
+	}
+	
+	if device == nil {
+		device = container.NewDevice()
+		device.PushName = BOT_TAG
+		fmt.Println("🆕 New session created")
+	}
+
+	client = whatsmeow.NewClient(device, waLog.Stdout("Client", "INFO", true))
+	client.AddEventHandler(eventHandler)
+
+	// Auto-connect if session exists
+	if client.Store.ID != nil {
+		fmt.Println("🔄 Restoring previous session...")
+		err = client.Connect()
+		if err != nil {
+			log.Printf("⚠️ Connection error: %v", err)
+			fmt.Println("💡 Use website to pair again")
+		} else {
+			fmt.Println("✅ Session restored and connected!")
 		}
+	} else {
+		fmt.Println("⏳ No active session - Use website to pair")
 	}
 
-	// 4. Web Server
+	// ------------------- WEB SERVER -------------------
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
-	r.LoadHTMLGlob("web/*.html")
-	r.StaticFile("/pic.png", "./pic.png")
-	r.Static("/web", "./web")
+	
+	// Check if web folder exists, if not use default handling
+	if _, err := os.Stat("web"); !os.IsNotExist(err) {
+		r.LoadHTMLGlob("web/*.html")
+		r.Static("/pic.png", "./web/pic.png")
+	}
+	
+	// Try serving from root if not in web folder
+	if _, err := os.Stat("pic.png"); !os.IsNotExist(err) {
+		r.StaticFile("/pic.png", "./pic.png")
+	}
 
-	r.GET("/", func(c *gin.Context) { c.HTML(200, "index.html", nil) })
-	r.GET("/ws", handleWebSocket)
-	r.POST("/api/pair", handlePairing)
+	// Home page
+	r.GET("/", func(c *gin.Context) {
+		c.HTML(http.StatusOK, "index.html", gin.H{
+			"paired": client.Store.ID != nil,
+		})
+	})
+
+	// API to get pairing code
+	r.POST("/api/pair", handlePairAPI)
 
 	go r.Run(":8080")
-	fmt.Println("🌐 Server running on :8080")
+	fmt.Println("🌐 Web server running on port 8080")
 
-	// 5. Shutdown
+	// ------------------- GRACEFUL SHUTDOWN -------------------
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c
-
-	fmt.Println("🔻 Shutting down...")
-	clientMutex.Lock()
-	for _, cli := range clientMap {
-		cli.Disconnect()
-	}
-	clientMutex.Unlock()
-	if mongoClient != nil { mongoClient.Disconnect(context.Background()) }
+	client.Disconnect()
 }
 
-// --- 🍃 MONGODB ---
-func connectMongo() {
-	mongoURL := "mongodb://mongo:AEvrikOWlrmJCQrDTQgfGtqLlwhwLuAA@crossover.proxy.rlwy.net:29609"
-	if envUrl := os.Getenv("MONGO_URL"); envUrl != "" { mongoURL = envUrl }
+// ================= EVENTS =================
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+func eventHandler(evt interface{}) {
+	// FIX: Use v directly or ignore if not needed, handled type switch correctly
+	switch v := evt.(type) {
+	case *events.Message:
+		if v.Info.IsFromMe {
+			return
+		}
 
-	var err error
-	mongoClient, err = mongo.Connect(ctx, options.Client().ApplyURI(mongoURL))
-	if err != nil { log.Fatal("❌ Mongo Error: ", err) }
+		text := strings.ToLower(strings.TrimSpace(getText(v.Message)))
+		
+		fmt.Printf("📩 Msg: %s | From: %s\n", text, v.Info.Sender.User)
+
+		// Handle text commands
+		switch text {
+		case "#menu", "menu":
+			sendMenu(v.Info.Chat)
+		case "#ping", "ping":
+			sendPing(v.Info.Chat)
+		case "#info", "info":
+			sendInfo(v.Info.Chat)
+		}
 	
-	fmt.Println("✅ Connected to MongoDB")
-	mongoColl = mongoClient.Database("impossible_bot").Collection("settings")
-}
-
-// --- 🔌 CLIENT CONNECTION ---
-func connectClient(device *store.Device) {
-	client := whatsmeow.NewClient(device, waLog.Stdout("Client", "INFO", true))
-	client.AddEventHandler(func(evt interface{}) { handler(client, evt) })
-
-	if err := client.Connect(); err == nil && client.Store.ID != nil {
-		clientMutex.Lock()
-		clientMap[client.Store.ID.String()] = client
-		clientMutex.Unlock()
-		
-		msg := fmt.Sprintf("✅ Connected: %s", client.Store.ID.User)
-		fmt.Println(msg)
-		broadcastWS(gin.H{"type": "log", "msg": msg})
-		
-		dataMutex.RLock()
-		if data.AlwaysOnline {
-			client.SendPresence(context.Background(), types.PresenceAvailable)
-		}
-		dataMutex.RUnlock()
+	case *events.Connected:
+		fmt.Println("🟢 BOT CONNECTED")
+	case *events.Disconnected:
+		fmt.Println("🔴 BOT DISCONNECTED")
 	}
 }
 
-// --- 🔗 PAIRING LOGIC (RESTORED OLD WORKING LOGIC) ---
-func handlePairing(c *gin.Context) {
-	var req struct{ Number string `json:"number"` }
-	if c.BindJSON(&req) != nil { return }
-	num := strings.ReplaceAll(req.Number, " ", "")
-	num = strings.ReplaceAll(num, "+", "")
+func getText(msg *waProto.Message) string {
+	if msg == nil {
+		return ""
+	}
+	if msg.Conversation != nil {
+		return *msg.Conversation
+	}
+	if msg.ExtendedTextMessage != nil && msg.ExtendedTextMessage.Text != nil {
+		return *msg.ExtendedTextMessage.Text
+	}
+	return ""
+}
 
-	// 1. Delete Old Session if exists
-	existingDevices, err := container.GetAllDevices(context.Background())
-	if err == nil {
-		for _, d := range existingDevices {
-			if d.ID != nil && d.ID.User == num {
-				fmt.Printf("♻️ Deleting old session for: %s\n", num)
-				container.DeleteDevice(context.Background(), d)
-			}
-		}
+// ================= MENU =================
+
+func sendMenu(chat types.JID) {
+	menuText := `╔════════════════════╗
+║  🚀 IMPOSSIBLE BOT
+║  📋 MAIN MENU
+╠════════════════════╣
+║ ⚡ *#ping*
+║ ℹ️ *#info*
+║ 📋 *#menu*
+╚════════════════════╝`
+
+	client.SendMessage(context.Background(), chat, &waProto.Message{
+		Conversation: proto.String(menuText),
+	})
+}
+
+// ================= PING =================
+
+func sendPing(chat types.JID) {
+	start := time.Now()
+	// Fake latency for effect
+	time.Sleep(50 * time.Millisecond) 
+	ms := time.Since(start).Milliseconds()
+	uptime := time.Since(startTime).Round(time.Second)
+
+	msg := fmt.Sprintf("⚡ PONG: %dms\n⏱ Uptime: %s", ms, uptime)
+
+	client.SendMessage(context.Background(), chat, &waProto.Message{
+		Conversation: proto.String(msg),
+	})
+}
+
+// ================= INFO =================
+
+func sendInfo(chat types.JID) {
+	uptime := time.Since(startTime).Round(time.Second)
+	msg := fmt.Sprintf("🤖 IMPOSSIBLE BOT v4\n👨‍💻 Dev: %s\n⏱ Uptime: %s", DEV_NAME, uptime)
+
+	client.SendMessage(context.Background(), chat, &waProto.Message{
+		Conversation: proto.String(msg),
+	})
+}
+
+// ================= PAIR API (YOUR LOGIC) =================
+
+func handlePairAPI(c *gin.Context) {
+	var req struct {
+		Number string `json:"number"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": "invalid request"})
+		return
 	}
 
-	// 2. Create New Device
-	device := container.NewDevice()
-	client := whatsmeow.NewClient(device, waLog.Stdout("Pairing", "INFO", true))
+	number := strings.ReplaceAll(req.Number, "+", "")
+	number = strings.TrimSpace(number)
 
-	// 3. Connect First (Old Logic)
+	// Create NEW device for this pairing
+	newDevice := container.NewDevice()
+	newDevice.PushName = BOT_TAG
+	
+	// Create temporary client for pairing
+	tempClient := whatsmeow.NewClient(newDevice, waLog.Stdout("Pairing", "INFO", true))
+	
 	fmt.Println("🔌 Connecting for pairing...")
-	if err := client.Connect(); err != nil {
-		c.JSON(500, gin.H{"error": "Connection Failed: " + err.Error()})
-		return
-	}
-
-	// 4. Wait for Stable Connection (Old Logic: Just Sleep)
-	fmt.Println("⏳ Waiting 10s for stable connection...")
-	time.Sleep(10 * time.Second)
-
-	// 5. Generate Code
-	code, err := client.PairPhone(context.Background(), num, true, whatsmeow.PairClientChrome, "Linux")
+	err := tempClient.Connect()
 	if err != nil {
-		client.Disconnect()
-		fmt.Printf("❌ Pairing Error: %v\n", err)
-		c.JSON(500, gin.H{"error": "Pairing Failed: " + err.Error()})
+		fmt.Printf("❌ Connection failed: %v\n", err)
+		c.JSON(500, gin.H{"error": "Failed to connect: " + err.Error()})
 		return
 	}
 
-	// 6. Register Handler
-	client.AddEventHandler(func(evt interface{}) { handler(client, evt) })
+	// Wait for stable connection (YOUR LOGIC)
+	fmt.Println("⏳ Waiting 5s for socket stability...")
+	time.Sleep(5 * time.Second)
+
+	fmt.Printf("📱 Generating pairing code for %s...\n", number)
+	code, err := tempClient.PairPhone(
+		context.Background(),
+		number,
+		true,
+		whatsmeow.PairClientChrome,
+		"Linux",
+	)
 	
-	// 7. Keep connection alive logic
+	if err != nil {
+		fmt.Printf("❌ Pairing failed: %v\n", err)
+		tempClient.Disconnect()
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+
+	fmt.Printf("✅ Code generated: %s\n", code)
+	
+	// Keep temp client connected until paired
 	go func() {
-		// Wait to ensure login happens
-		time.Sleep(30 * time.Second)
-		if client.Store.ID != nil {
-			clientMutex.Lock()
-			clientMap[client.Store.ID.String()] = client
-			clientMutex.Unlock()
-			fmt.Println("✅ Pairing Successful & Saved!")
-		} else {
-			// If not logged in after 30s, disconnect to save resources
-			// client.Disconnect() // Optional: keep it open if you want user to try again
+		// Give user 60 seconds to pair
+		for i := 0; i < 60; i++ {
+			if tempClient.Store.ID != nil {
+				fmt.Println("✅ Pairing successful!")
+				
+				// Disconnect old client
+				if client != nil {
+					client.Disconnect()
+				}
+				
+				// Swap clients
+				client = tempClient
+				client.AddEventHandler(eventHandler)
+				return
+			}
+			time.Sleep(1 * time.Second)
 		}
+		fmt.Println("❌ Pairing timed out")
+		tempClient.Disconnect()
 	}()
-
-	c.JSON(200, gin.H{"code": code})
-}
-
-// --- 📡 WEBSOCKET ---
-func handleWebSocket(c *gin.Context) {
-	conn, err := wsupgrader.Upgrade(c.Writer, c.Request, nil)
-	if err != nil { return }
 	
-	wsMutex.Lock()
-	clients[conn] = true
-	wsMutex.Unlock()
-
-	clientMutex.RLock()
-	count := len(clientMap)
-	clientMutex.RUnlock()
-	conn.WriteJSON(gin.H{"type": "stats", "sessions": count, "uptime": time.Since(startTime).String()})
-
-	defer func() {
-		wsMutex.Lock()
-		delete(clients, conn)
-		wsMutex.Unlock()
-		conn.Close()
-	}()
-
-	for {
-		if _, _, err := conn.ReadMessage(); err != nil { break }
-	}
-}
-
-func broadcastWS(msg interface{}) {
-	wsMutex.Lock()
-	defer wsMutex.Unlock()
-	for client := range clients {
-		client.WriteJSON(msg)
-	}
+	c.JSON(200, gin.H{"code": code})
 }
