@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
@@ -40,14 +41,12 @@ func isKnownCommand(text string) bool {
 
 	lowerText := strings.ToLower(strings.TrimSpace(text))
 	for _, cmd := range commands {
-		// چیک کریں کہ کیا ٹیکسٹ کسی کمانڈ سے شروع ہو رہا ہے
 		if strings.HasPrefix(lowerText, cmd) {
 			return true
 		}
 	}
 	return false
 }
-
 
 func processMessage(client *whatsmeow.Client, v *events.Message) {
 	chatID := v.Info.Chat.String()
@@ -116,7 +115,7 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		}
 	}
 
-	// 🔐 PERMISSION CHECK
+	// 🔐 PERMISSION CHECK (UPDATED LID LOGIC)
 	if !canExecute(client, v, cmd) {
 		return
 	}
@@ -215,8 +214,10 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 
 func getCleanID(jidStr string) string {
 	if jidStr == "" { return "unknown" }
+	// @ کے پیچھے والا حصہ نکالیں (نمبر یا LID)
 	parts := strings.Split(jidStr, "@")
 	userPart := parts[0]
+	// ڈیوائس آئی ڈی ہٹائیں (جیسے :61)
 	if strings.Contains(userPart, ":") {
 		userPart = strings.Split(userPart, ":")[0]
 	}
@@ -225,26 +226,41 @@ func getCleanID(jidStr string) string {
 
 func getBotLID(client *whatsmeow.Client) string {
 	if client.Store.ID == nil { return "unknown" }
+	// Postgres میں سیو شدہ LID کو ترجیح دیں
+	if client.Store.LID.String() != "" {
+		return getCleanID(client.Store.LID.String())
+	}
 	return getCleanID(client.Store.ID.User)
 }
 
-func getSenderLID(sender types.JID) string {
-	if sender.IsEmpty() { return "unknown" }
-	return getCleanID(sender.User)
-}
-
 func isOwner(client *whatsmeow.Client, sender types.JID) bool {
-	botLID := getBotLID(client)
-	senderLID := getSenderLID(sender)
-	return (botLID == senderLID && botLID != "unknown")
+	if client.Store.ID == nil { return false }
+	
+	// سینڈر کا کلین نمبر/آئی ڈی
+	senderClean := getCleanID(sender.String())
+	
+	// بوٹ کا اپنا کلین نمبر
+	botNumClean := getCleanID(client.Store.ID.User)
+	
+	// بوٹ کی کلین LID (ڈیٹا بیس سے)
+	botLidClean := ""
+	if client.Store.LID.String() != "" {
+		botLidClean = getCleanID(client.Store.LID.String())
+	}
+
+	// میچنگ: اگر سینڈر بوٹ کا نمبر ہے یا بوٹ کی LID ہے
+	isMatch := (senderClean == botNumClean || (botLidClean != "" && senderClean == botLidClean))
+	
+	fmt.Printf("🎯 [OWNER CHECK] Sender: %s | BotNum: %s | BotLID: %s | Match: %v\n", senderClean, botNumClean, botLidClean, isMatch)
+	return isMatch
 }
 
 func isAdmin(client *whatsmeow.Client, chat, user types.JID) bool {
 	info, err := client.GetGroupInfo(context.Background(), chat)
 	if err != nil { return false }
-	userLID := getSenderLID(user)
+	userLID := getCleanID(user.String())
 	for _, p := range info.Participants {
-		if getSenderLID(p.JID) == userLID && (p.IsAdmin || p.IsSuperAdmin) {
+		if getCleanID(p.JID.String()) == userLID && (p.IsAdmin || p.IsSuperAdmin) {
 			return true
 		}
 	}
@@ -268,16 +284,23 @@ func sendOwner(client *whatsmeow.Client, v *events.Message) {
 	isOwn := isOwner(client, v.Info.Sender)
 	status := "❌ NOT Owner"
 	if isOwn { status = "✅ YOU are Owner" }
-	replyMessage(client, v, fmt.Sprintf("👑 OWNER CHECK\n\n🤖 Bot: %s\n👤 You: %s\n📊 %s", getBotLID(client), getSenderLID(v.Info.Sender), status))
+	
+	msg := fmt.Sprintf(`╔════════════════╗
+║ 👑 OWNER CHECK
+╠════════════════╣
+║ 🤖 Bot Num: %s
+║ 🆔 Bot LID: %s
+║ 👤 Sender: %s
+╠════════════════╣
+║ 📊 Status: %s
+╚════════════════╝`, getCleanID(client.Store.ID.User), getCleanID(client.Store.LID.String()), getCleanID(v.Info.Sender.String()), status)
+	
+	replyMessage(client, v, msg)
 }
 
 func sendBotsList(client *whatsmeow.Client, v *events.Message) {
-	replyMessage(client, v, "📊 Registered Bots List coming soon...")
+	replyMessage(client, v, "📊 Multi-Bot System is Active and Synced with LID.")
 }
-
-// ... (Rest of your helper functions like sendMenu, sendPing, sendID, react, replyMessage, etc. remain the same)
-// میں نے یہاں سے نیچے وہی پرانے ہیلپر فنکشنز استعمال کیے ہیں جو آپ کے پاس پہلے سے تھے۔
-
 
 // ═══════════════════════════════════════════════════════════════
 // 📜 MENU SYSTEM
@@ -296,70 +319,70 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	menu := fmt.Sprintf(`╔═════════════════╗
-║   %s   
+║   %s   
 ╠═════════════════╣
-║ 👋 *Assalam-o-Alaikum*     
-║ 👑 *Owner:* %s             
-║ 🛡️ *Mode:* %s              
-║ ⏳ *Uptime:* %s            
+║ 👋 *Assalam-o-Alaikum*     
+║ 👑 *Owner:* %s             
+║ 🛡️ *Mode:* %s              
+║ ⏳ *Uptime:* %s            
 ╠═════════════════╣
-║                          
-║  ╭─────── DOWNLOADERS─╮
-║  │ 🔸 *%sfb* - Facebook   
-║  │ 🔸 *%sig* - Instagram  
-║  │ 🔸 *%spin* - Pinterest 
-║  │ 🔸 *%stiktok* - TikTok 
-║  │ 🔸 *%sytmp3* - YT Audio
-║  │ 🔸 *%sytmp4* - YT Video 
-║  ╰───────────────────╯
-║                           
-║  ╭─────── GROUP ──────╮
-║  │ 🔸 *%sadd* - Add Member
-║  │ 🔸 *%sdemote* - Demote 
-║  │ 🔸 *%sgroup* - Settings
-║  │ 🔸 *%shidetag* - Hidden
-║  │ 🔸 *%skick* - Remove   
-║  │ 🔸 *%spromote* - Admin
-║  │ 🔸 *%stagall* - Mention
-║  ╰───────────────────╯
-║                           
-║  ╭──── SETTINGS ───╮
-║  │ 🔸 *%saddstatus*       
-║  │ 🔸 *%salwaysonline*     
-║  │ 🔸 *%santilink*         
-║  │ 🔸 *%santipic*         
-║  │ 🔸 *%santisticker*     
-║  │ 🔸 *%santivideo*        
-║  │ 🔸 *%sautoreact*    
-║  │ 🔸 *%sautoread*      
-║  │ 🔸 *%sautostatus*   
-║  │ 🔸 *%sdelstatus*    
-║  │ 🔸 *%sliststatus*   
-║  │ 🔸 *%smode*      
-║  │ 🔸 *%sowner*     
-║  │ 🔸 *%sreadallstatus* 
-║  │ 🔸 *%sstatusreact*  
-║  ╰─────────────────╯
-║                           
-║  ╭─────── TOOLS ───────╮
-║  │ 🔸 *%sdata* - DB Status
-║  │ 🔸 *%sid* - Get ID      
-║  │ 🔸 *%slistbots* - Bots🆕
-║  │ 🔸 *%sping* - Speed     
-║  │ 🔸 *%sremini* - Enhance
-║  │ 🔸 *%sremovebg* - BG  
-║  │ 🔸 *%ssticker* - Create 
-║  │ 🔸 *%stoimg* - Convert 
-║  │ 🔸 *%stourl* - Upload  
-║  │ 🔸 *%stovideo* - Make 
-║  │ 🔸 *%stranslate* - Lang
-║  │ 🔸 *%svv* - ViewOnce 
-║  │ 🔸 *%sweather* - Info
-║  ╰────────────────────╯
-║                          
+║                          
+║  ╭─────── DOWNLOADERS─╮
+║  │ 🔸 *%sfb* - Facebook   
+║  │ 🔸 *%sig* - Instagram  
+║  │ 🔸 *%spin* - Pinterest 
+║  │ 🔸 *%stiktok* - TikTok 
+║  │ 🔸 *%sytmp3* - YT Audio
+║  │ 🔸 *%sytmp4* - YT Video 
+║  ╰───────────────────╯
+║                           
+║  ╭─────── GROUP ──────╮
+║  │ 🔸 *%sadd* - Add Member
+║  │ 🔸 *%sdemote* - Demote 
+║  │ 🔸 *%sgroup* - Settings
+║  │ 🔸 *%shidetag* - Hidden
+║  │ 🔸 *%skick* - Remove   
+║  │ 🔸 *%spromote* - Admin
+║  │ 🔸 *%stagall* - Mention
+║  ╰───────────────────╯
+║                           
+║  ╭──── SETTINGS ───╮
+║  │ 🔸 *%saddstatus*       
+║  │ 🔸 *%salwaysonline*     
+║  │ 🔸 *%santilink*         
+║  │ 🔸 *%santipic*         
+║  │ 🔸 *%santisticker*     
+║  │ 🔸 *%santivideo*        
+║  │ 🔸 *%sautoreact*    
+║  │ 🔸 *%sautoread*      
+║  │ 🔸 *%sautostatus*   
+║  │ 🔸 *%sdelstatus*    
+║  │ 🔸 *%sliststatus*   
+║  │ 🔸 *%smode*      
+║  │ 🔸 *%sowner*     
+║  │ 🔸 *%sreadallstatus* 
+║  │ 🔸 *%sstatusreact*  
+║  ╰─────────────────╯
+║                           
+║  ╭─────── TOOLS ───────╮
+║  │ 🔸 *%sdata* - DB Status
+║  │ 🔸 *%sid* - Get ID      
+║  │ 🔸 *%slistbots* - Bots🆕
+║  │ 🔸 *%sping* - Speed     
+║  │ 🔸 *%sremini* - Enhance
+║  │ 🔸 *%sremovebg* - BG  
+║  │ 🔸 *%ssticker* - Create 
+║  │ 🔸 *%stoimg* - Convert 
+║  │ 🔸 *%stourl* - Upload  
+║  │ 🔸 *%stovideo* - Make 
+║  │ 🔸 *%stranslate* - Lang
+║  │ 🔸 *%svv* - ViewOnce 
+║  │ 🔸 *%sweather* - Info
+║  ╰────────────────────╯
+║                          
 ╠═════════════════════╣
 ║ 🔐 LID-Based Security
-║ © 2025 Nothing is Impossible 
+║ © 2025 Nothing is Impossible 
 ╚═════════════════════╝`,
 		BOT_NAME, OWNER_NAME, currentMode, uptime,
 		p, p, p, p, p, p,
@@ -419,10 +442,10 @@ func react(client *whatsmeow.Client, chat types.JID, msgID types.MessageID, emoj
 		ReactionMessage: &waProto.ReactionMessage{
 			Key: &waProto.MessageKey{
 				RemoteJID: proto.String(chat.String()),
-				ID:        proto.String(string(msgID)),
-				FromMe:    proto.Bool(false),
+				ID:        proto.String(string(msgID)),
+				FromMe:    proto.Bool(false),
 			},
-			Text:              proto.String(emoji),
+			Text:              proto.String(emoji),
 			SenderTimestampMS: proto.Int64(time.Now().UnixMilli()),
 		},
 	})
@@ -433,8 +456,8 @@ func replyMessage(client *whatsmeow.Client, v *events.Message, text string) {
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(text),
 			ContextInfo: &waProto.ContextInfo{
-				StanzaID:      proto.String(v.Info.ID),
-				Participant:   proto.String(v.Info.Sender.String()),
+				StanzaID:      proto.String(v.Info.ID),
+				Participant:   proto.String(v.Info.Sender.String()),
 				QuotedMessage: v.Message,
 			},
 		},
@@ -446,8 +469,8 @@ func sendReplyMessage(client *whatsmeow.Client, v *events.Message, text string) 
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(text),
 			ContextInfo: &waProto.ContextInfo{
-				StanzaID:      proto.String(v.Info.ID),
-				Participant:   proto.String(v.Info.Sender.String()),
+				StanzaID:      proto.String(v.Info.ID),
+				Participant:   proto.String(v.Info.Sender.String()),
 				QuotedMessage: v.Message,
 			},
 		},
@@ -479,15 +502,15 @@ func getGroupSettings(id string) *GroupSettings {
 	cacheMutex.RUnlock()
 
 	s := &GroupSettings{
-		ChatID:         id,
-		Mode:           "public",
-		Antilink:       false,
-		AntilinkAdmin:  true,
+		ChatID:         id,
+		Mode:           "public",
+		Antilink:       false,
+		AntilinkAdmin:  true,
 		AntilinkAction: "delete",
-		AntiPic:        false,
-		AntiVideo:      false,
-		AntiSticker:    false,
-		Warnings:       make(map[string]int),
+		AntiPic:        false,
+		AntiVideo:      false,
+		AntiSticker:    false,
+		Warnings:       make(map[string]int),
 	}
 
 	cacheMutex.Lock()
@@ -501,4 +524,31 @@ func saveGroupSettings(s *GroupSettings) {
 	cacheMutex.Lock()
 	groupCache[s.ChatID] = s
 	cacheMutex.Unlock()
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 🚀 MULTI-BOT BOOTSTRAP (POSTGRES CONNECTIVITY)
+// ═══════════════════════════════════════════════════════════════
+
+func StartAllBots(container *sqlstore.Container) {
+	devices, err := container.GetAllDevices()
+	if err != nil {
+		fmt.Printf("❌ سیشن لوڈ کرنے میں غلطی: %v\n", err)
+		return
+	}
+
+	fmt.Printf("\n📂 [MULTI-BOT] ڈیٹا بیس میں %d سیشن ملے ہیں۔ کنیکٹ کر رہے ہیں...\n", len(devices))
+
+	for _, device := range devices {
+		clientLog := waLog.Stdout("Client", "DEBUG", true)
+		client := whatsmeow.NewClient(device, clientLog)
+		client.AddEventHandler(handler)
+
+		err = client.Connect()
+		if err != nil {
+			fmt.Printf("❌ نمبر %s کنیکٹ نہ ہو سکا: %v\n", device.ID.User, err)
+		} else {
+			fmt.Printf("✅ بوٹ %s آن لائن ہو گیا ہے!\n", device.ID.User)
+		}
+	}
 }
