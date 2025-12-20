@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -350,19 +349,6 @@ func sendOwnerStatus(client *whatsmeow.Client, v *events.Message) {
 // 📊 COMMAND: LIST REGISTERED BOTS
 // ════════════════════════════════════════════════════════════════
 
-func sendBotsList(client *whatsmeow.Client, v *events.Message) {
-	if !isOwnerByLID(client, v.Info.Sender) {
-		replyMessage(client, v, "❌ Owner only command")
-		return
-	}
-
-	lidCacheMutex.RLock()
-	defer lidCacheMutex.RUnlock()
-
-	if len(lidCache) == 0 {
-		sendReplyMessage(client, v, "⚠️ No bots registered yet")
-		return
-	}
 
 	msg := "╔════════════════════════════╗\n"
 	msg += "║ 📊 REGISTERED BOTS\n"

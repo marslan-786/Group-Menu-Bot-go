@@ -26,6 +26,29 @@ func handler(client *whatsmeow.Client, evt interface{}) {
 	}
 }
 
+// یہ فنکشن چیک کرتا ہے کہ آیا میسج میں موجود لفظ ہماری لسٹ میں ہے یا نہیں
+func isKnownCommand(text string) bool {
+	commands := []string{
+		"menu", "help", "list", "ping", "id", "owner", "data", "listbots",
+		"alwaysonline", "autoread", "autoreact", "autostatus", "statusreact",
+		"addstatus", "delstatus", "liststatus", "readallstatus", "setprefix", "mode",
+		"antilink", "antipic", "antivideo", "antisticker",
+		"kick", "add", "promote", "demote", "tagall", "hidetag", "group", "del", "delete",
+		"tiktok", "tt", "fb", "facebook", "insta", "ig", "pin", "pinterest", "ytmp3", "ytmp4",
+		"sticker", "s", "toimg", "tovideo", "removebg", "remini", "tourl", "weather", "translate", "tr", "vv",
+	}
+
+	lowerText := strings.ToLower(strings.TrimSpace(text))
+	for _, cmd := range commands {
+		// چیک کریں کہ کیا ٹیکسٹ کسی کمانڈ سے شروع ہو رہا ہے
+		if strings.HasPrefix(lowerText, cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+
 func processMessage(client *whatsmeow.Client, v *events.Message) {
 	chatID := v.Info.Chat.String()
 	senderID := v.Info.Sender.String()
