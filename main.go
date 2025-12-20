@@ -225,9 +225,14 @@ func getText(msg *waProto.Message) string {
 // ================= MENU =================
 
 func sendMenu(chat types.JID) {
+	fmt.Println("\n┌─────────────────────────────────")
+	fmt.Println("│ 📋 SENDING MENU")
+	fmt.Println("├─────────────────────────────────")
+	fmt.Printf("│ To: %s\n", chat.String())
+	
 	menu := &waProto.ListMessage{
 		Title:       proto.String("🚀 IMPOSSIBLE MENU"),
-		Description: proto.String("براہ کرم کوئی آپشن منتخب کریں"),
+		Description: proto.String("براہ کرم کوئی آپشن منتخب کریں\nPlease select an option"),
 		ButtonText:  proto.String("📋 مینو کھولیں"),
 		ListType:    waProto.ListMessage_SINGLE_SELECT.Enum(),
 		Sections: []*waProto.ListMessage_Section{
@@ -249,14 +254,29 @@ func sendMenu(chat types.JID) {
 		},
 	}
 
-	client.SendMessage(context.Background(), chat, &waProto.Message{
+	fmt.Println("│ 🔄 Calling SendMessage API...")
+	resp, err := client.SendMessage(context.Background(), chat, &waProto.Message{
 		ListMessage: menu,
 	})
+	
+	if err != nil {
+		fmt.Printf("│ ❌ ERROR: %v\n", err)
+		fmt.Println("└─────────────────────────────────\n")
+	} else {
+		fmt.Printf("│ ✅ SUCCESS - ID: %s\n", resp.ID)
+		fmt.Printf("│ ⏰ Timestamp: %v\n", resp.Timestamp)
+		fmt.Println("└─────────────────────────────────\n")
+	}
 }
 
 // ================= PING =================
 
 func sendPing(chat types.JID) {
+	fmt.Println("\n┌─────────────────────────────────")
+	fmt.Println("│ ⚡ SENDING PING")
+	fmt.Println("├─────────────────────────────────")
+	fmt.Printf("│ To: %s\n", chat.String())
+	
 	start := time.Now()
 	time.Sleep(20 * time.Millisecond)
 	ms := time.Since(start).Milliseconds()
@@ -277,9 +297,56 @@ func sendPing(chat types.JID) {
 		uptime,
 	)
 
-	client.SendMessage(context.Background(), chat, &waProto.Message{
+	fmt.Println("│ 🔄 Calling SendMessage API...")
+	resp, err := client.SendMessage(context.Background(), chat, &waProto.Message{
 		Conversation: proto.String(msg),
 	})
+	
+	if err != nil {
+		fmt.Printf("│ ❌ ERROR: %v\n", err)
+		fmt.Println("└─────────────────────────────────\n")
+	} else {
+		fmt.Printf("│ ✅ SUCCESS - ID: %s\n", resp.ID)
+		fmt.Printf("│ 📊 Ping: %d ms | Uptime: %s\n", ms, uptime)
+		fmt.Println("└─────────────────────────────────\n")
+	}
+}
+
+// ================= INFO =================
+
+func sendInfo(chat types.JID) {
+	fmt.Println("\n┌─────────────────────────────────")
+	fmt.Println("│ ℹ️ SENDING INFO")
+	fmt.Println("├─────────────────────────────────")
+	fmt.Printf("│ To: %s\n", chat.String())
+	
+	uptime := time.Since(startTime).Round(time.Second)
+	
+	msg := fmt.Sprintf(
+		"╔══════════════════╗\n"+
+			"║ 🤖 BOT INFO\n"+
+			"╠══════════════════╣\n"+
+			"║ 📛 IMPOSSIBLE BOT\n"+
+			"║ 👨‍💻 %s\n"+
+			"║ ⏱ UPTIME: %s\n"+
+			"║ 🏷 VERSION: 1.0\n"+
+			"╚══════════════════╝",
+		DEV_NAME,
+		uptime,
+	)
+
+	fmt.Println("│ 🔄 Calling SendMessage API...")
+	resp, err := client.SendMessage(context.Background(), chat, &waProto.Message{
+		Conversation: proto.String(msg),
+	})
+	
+	if err != nil {
+		fmt.Printf("│ ❌ ERROR: %v\n", err)
+		fmt.Println("└─────────────────────────────────\n")
+	} else {
+		fmt.Printf("│ ✅ SUCCESS - ID: %s\n", resp.ID)
+		fmt.Println("└─────────────────────────────────\n")
+	}
 }
 
 // ================= PAIR API =================
