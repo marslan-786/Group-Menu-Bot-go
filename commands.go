@@ -19,7 +19,7 @@ func handler(client *whatsmeow.Client, evt interface{}) {
 	case *events.Message:
 		go processMessage(client, v)
 	case *events.GroupInfo:
-		go handleGroupInfoChange(client, v)  // ✅ NEW
+		go handleGroupInfoChange(client, v)
 	}
 }
 
@@ -112,7 +112,7 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		react(client, v.Info.Chat, v.Info.ID, "👑")
 		sendOwner(client, v)
 	case "data":
-		replyMessage(client, v, "╭═══════════════════╮\n┃   📂 DATA STATUS \n├═══════════════════┤\n┃ ✅ Data Base Coming╰═══════════════════╯")
+		replyMessage(client, v, "╔════════════════╗\n║ 📂 DATA STATUS\n╠════════════════╣\n║ ✅ DB Coming\n╚════════════════╝")
 	case "alwaysonline":
 		toggleAlwaysOnline(client, v)
 	case "autoread":
@@ -304,17 +304,15 @@ func sendPing(client *whatsmeow.Client, v *events.Message) {
 	ms := time.Since(start).Milliseconds()
 	uptime := time.Since(startTime).Round(time.Second)
 
-	msg := fmt.Sprintf(`╔═══════════════════╗
-║   ⚡ PING STATUS ⚡       
-╠═══════════════════╣
-║                           
-║    🚀 *Speed:* %d MS         
-║     ⏱️ *Uptime:* %s          
-║.    👑 *Dev:* %s             
-║                           
-╠═══════════════════╣
-║    🟢 System Running      
-╚═══════════════════╝`, ms, uptime, OWNER_NAME)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ⚡ PING STATUS
+╠════════════════╣
+║ 🚀 Speed: %d MS
+║ ⏱️ Uptime: %s
+║ 👑 Dev: %s
+╠════════════════╣
+║ 🟢 System Running
+╚════════════════╝`, ms, uptime, OWNER_NAME)
 
 	sendReplyMessage(client, v, msg)
 }
@@ -327,49 +325,126 @@ func sendID(client *whatsmeow.Client, v *events.Message) {
 		chatType = "Group"
 	}
 
-	msg := fmt.Sprintf(`╔══════════════════╗
-║   🆔 ID INFORMATION    
-╠══════════════════╣
-║                           
-║  👤 *User ID:*             
-║     `+"`%s`"+`              
-║                           
-║  👥 *Chat ID:*             
-║     `+"`%s`"+`              
-║                           
-║  🏷️ *Type:* %s            
-║                           
-╚═══════════════════╝`, user, chat, chatType)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ 🆔 ID INFO
+╠════════════════╣
+║ 👤 User ID:
+║ `+"`%s`"+`
+║ 👥 Chat ID:
+║ `+"`%s`"+`
+║ 🏷️ Type: %s
+╚════════════════╝`, user, chat, chatType)
 
 	sendReplyMessage(client, v, msg)
 }
 
+// ==================== 🔥 CRITICAL: OWNER LOGIC ====================
+
+// ✅ STEP 1: Extract clean phone number from LID User field
+func extractPhoneFromLID(lidUser string) string {
+	if lidUser == "" {
+		return "unknown"
+	}
+	
+	// Remove device ID (e.g., "923001234567:10" → "923001234567")
+	if strings.Contains(lidUser, ":") {
+		lidUser = strings.Split(lidUser, ":")[0]
+	}
+	
+	// Remove + if present
+	lidUser = strings.ReplaceAll(lidUser, "+", "")
+	
+	return strings.TrimSpace(lidUser)
+}
+
+// ✅ STEP 2: Force bot to extract its OWN LID number
+func getBotLIDNumber(client *whatsmeow.Client) string {
+	if client.Store.ID == nil || client.Store.ID.IsEmpty() {
+		fmt.Printf("❌ Bot Store.ID is nil or empty\n")
+		return "unknown"
+	}
+	
+	// ✅ FORCE: Bot MUST convert itself to LID first
+	botLID := client.Store.ID.ToNonAD()
+	
+	// ✅ Debug log
+	fmt.Printf("🤖 Bot LID Extraction:\n")
+	fmt.Printf("   Original JID: %s\n", client.Store.ID.String())
+	fmt.Printf("   Forced LID: %s\n", botLID.String())
+	fmt.Printf("   LID.User: %s\n", botLID.User)
+	
+	// ✅ Extract ONLY the phone number
+	botNumber := extractPhoneFromLID(botLID.User)
+	fmt.Printf("   Final Number: %s\n", botNumber)
+	
+	return botNumber
+}
+
+// ✅ STEP 3: Extract sender's phone number from their JID/LID
+func getSenderPhoneNumber(sender types.JID) string {
+	if sender.IsEmpty() {
+		return "unknown"
+	}
+	
+	// ✅ Sender might be linked device, convert to LID
+	senderLID := sender.ToNonAD()
+	
+	fmt.Printf("👤 Sender Extraction:\n")
+	fmt.Printf("   Original JID: %s\n", sender.String())
+	fmt.Printf("   Converted LID: %s\n", senderLID.String())
+	fmt.Printf("   LID.User: %s\n", senderLID.User)
+	
+	senderNumber := extractPhoneFromLID(senderLID.User)
+	fmt.Printf("   Final Number: %s\n", senderNumber)
+	
+	return senderNumber
+}
+
+// ✅ STEP 4: UNIVERSAL Owner check - NO hardcoding
+func isOwner(client *whatsmeow.Client, sender types.JID) bool {
+	// ✅ Bot apni LID number nikale (FORCED)
+	botNum := getBotLIDNumber(client)
+	
+	// ✅ Sender ki number nikalo
+	senderNum := getSenderPhoneNumber(sender)
+	
+	// ✅ Final comparison: ONLY numbers, NO JID/LID strings
+	isMatch := (botNum == senderNum && botNum != "unknown")
+	
+	fmt.Printf("🎯 Owner Check Result:\n")
+	fmt.Printf("   Bot Number: %s\n", botNum)
+	fmt.Printf("   Sender Number: %s\n", senderNum)
+	fmt.Printf("   Match: %v\n", isMatch)
+	fmt.Printf("   ════════════════════\n")
+	
+	return isMatch
+}
+
+// ✅ UPDATED: sendOwner with better display
 func sendOwner(client *whatsmeow.Client, v *events.Message) {
-	status := "❌ You are NOT the Owner"
+	// ✅ Bot ki LID number
+	botNum := getBotLIDNumber(client)
+	
+	// ✅ Sender ki number
+	senderNum := getSenderPhoneNumber(v.Info.Sender)
+	
+	// ✅ Check ownership
+	isOwn := isOwner(client, v.Info.Sender)
+	
+	status := "❌ NOT Owner"
 	statusIcon := "🚫"
-	if isOwner(client, v.Info.Sender) {
-		status = "✅ You are the OWNER"
+	if isOwn {
+		status = "✅ YOU are Owner"
 		statusIcon = "👑"
 	}
 
-	// ✅ دونوں کی LID سے نمبر نکالیں
-	botNum := getLIDNumber(client.Store.ID)
-	userNum := getLIDNumber(&v.Info.Sender)
-
-	msg := fmt.Sprintf(`╔════════════════════╗
-║  %s OWNER VERIFICATION   
-╠════════════════════╣
-║                           
-║  🤖 *Bot Number:*          
-║     %s                    
-║                           
-║  👤 *Your Number:*         
-║     %s                    
-║                           
-║  📊 *Status:*              
-║     %s                    
-║                           
-╚════════════════════╝`, statusIcon, botNum, userNum, status)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ %s OWNER CHECK
+╠════════════════╣
+║ 🤖 Bot: %s
+║ 👤 You: %s
+║ 📊 %s
+╚════════════════╝`, statusIcon, botNum, senderNum, status)
 
 	sendReplyMessage(client, v, msg)
 }
@@ -431,65 +506,8 @@ func getText(m *waProto.Message) string {
 	return ""
 }
 
-// ✅ LID سے نمبر نکالنے کا main function
-func getLIDNumber(jid *types.JID) string {
-	if jid == nil || jid.IsEmpty() {
-		return "unknown"
-	}
-	
-	// ✅ CRITICAL FIX: پہلے ToNonAD() سے LID لو، پھر User نکالو
-	lidJID := jid.ToNonAD()
-	
-	// ✅ Debug: دیکھیں کیا نکل رہا ہے
-	fmt.Printf("   JID Input: %s\n", jid.String())
-	fmt.Printf("   LID Output: %s\n", lidJID.String())
-	fmt.Printf("   LID.User: %s\n", lidJID.User)
-	
-	return extractPhoneFromLID(lidJID.User)
-}
-
-// ✅ LID User سے صرف نمبر extract کرنا
-func extractPhoneFromLID(lidUser string) string {
-	// LID format: "923001234567" یا "923001234567:10"
-	// : سے پہلے والا حصہ لو (device ID ہٹا دو)
-	if strings.Contains(lidUser, ":") {
-		lidUser = strings.Split(lidUser, ":")[0]
-	}
-	
-	// + ہٹا دو
-	lidUser = strings.ReplaceAll(lidUser, "+", "")
-	
-	return strings.TrimSpace(lidUser)
-}
-
-// ✅ UPDATED: Owner check اب LID استعمال کرتا ہے
-func isOwner(client *whatsmeow.Client, sender types.JID) bool {
-	if client.Store.ID == nil || client.Store.ID.IsEmpty() {
-		return false
-	}
-
-	// ✅ دونوں کی LID سے نمبر نکالیں
-	botNum := getLIDNumber(client.Store.ID)
-	senderNum := getLIDNumber(&sender)
-
-	// ✅ Debug log
-	fmt.Printf("🔍 Owner Check:\n")
-	fmt.Printf("   Bot JID: %s\n", client.Store.ID.String())
-	fmt.Printf("   Bot LID: %s -> Number: %s\n", client.Store.ID.ToNonAD().String(), botNum)
-	fmt.Printf("   Sender JID: %s\n", sender.String())
-	fmt.Printf("   Sender LID: %s -> Number: %s\n", sender.ToNonAD().String(), senderNum)
-	fmt.Printf("   Match: %v\n", botNum == senderNum)
-
-	return botNum == senderNum
-}
-
-// ✅ Backward compatibility - پرانا function
-func cleanNumber(num string) string {
-	return extractPhoneFromLID(num)
-}
-
 func canExecute(client *whatsmeow.Client, v *events.Message, cmd string) bool {
-	// ✅ Owner check اب LID استعمال کرتا ہے
+	// ✅ Owner check uses LID logic
 	if isOwner(client, v.Info.Sender) {
 		return true
 	}
@@ -514,11 +532,11 @@ func isAdmin(client *whatsmeow.Client, chat, user types.JID) bool {
 		return false
 	}
 
-	// ✅ LID comparison استعمال کریں
-	userNum := getLIDNumber(&user)
+	// ✅ Use LID-based number comparison
+	userNum := getSenderPhoneNumber(user)
 	
 	for _, p := range info.Participants {
-		participantNum := getLIDNumber(&p.JID)
+		participantNum := getSenderPhoneNumber(p.JID)
 		if participantNum == userNum && (p.IsAdmin || p.IsSuperAdmin) {
 			return true
 		}

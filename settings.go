@@ -14,11 +14,11 @@ import (
 // ==================== سیٹنگز سسٹم ====================
 func toggleAlwaysOnline(client *whatsmeow.Client, v *events.Message) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -36,26 +36,24 @@ func toggleAlwaysOnline(client *whatsmeow.Client, v *events.Message) {
 	}
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║   ⚙️ ALWAYS ONLINE UPDATED  ║
-╠═══════════════════════════╣
-║                           ║
-║  📊 *Status:* %s          ║
-║  🔄 *State:* %s           ║
-║  ✅ *Successfully Updated* ║
-║                           ║
-╚═══════════════════════════╝`, status, statusText)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ⚙️ ALWAYS ONLINE
+╠════════════════╣
+║ 📊 Status: %s
+║ 🔄 State: %s
+║ ✅ Updated
+╚════════════════╝`, status, statusText)
 
 	replyMessage(client, v, msg)
 }
 
 func toggleAutoRead(client *whatsmeow.Client, v *events.Message) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -70,26 +68,24 @@ func toggleAutoRead(client *whatsmeow.Client, v *events.Message) {
 	}
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║    ⚙️ AUTO READ UPDATED     ║
-╠═══════════════════════════╣
-║                           ║
-║  📊 *Status:* %s          ║
-║  🔄 *State:* %s           ║
-║  ✅ *Successfully Updated* ║
-║                           ║
-╚═══════════════════════════╝`, status, statusText)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ⚙️ AUTO READ
+╠════════════════╣
+║ 📊 Status: %s
+║ 🔄 State: %s
+║ ✅ Updated
+╚════════════════╝`, status, statusText)
 
 	replyMessage(client, v, msg)
 }
 
 func toggleAutoReact(client *whatsmeow.Client, v *events.Message) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -104,26 +100,24 @@ func toggleAutoReact(client *whatsmeow.Client, v *events.Message) {
 	}
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║   ⚙️ AUTO REACT UPDATED     ║
-╠═══════════════════════════╣
-║                           ║
-║  📊 *Status:* %s          ║
-║  🔄 *State:* %s           ║
-║  ✅ *Successfully Updated* ║
-║                           ║
-╚═══════════════════════════╝`, status, statusText)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ⚙️ AUTO REACT
+╠════════════════╣
+║ 📊 Status: %s
+║ 🔄 State: %s
+║ ✅ Updated
+╚════════════════╝`, status, statusText)
 
 	replyMessage(client, v, msg)
 }
 
 func toggleAutoStatus(client *whatsmeow.Client, v *events.Message) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -138,26 +132,24 @@ func toggleAutoStatus(client *whatsmeow.Client, v *events.Message) {
 	}
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║   ⚙️ AUTO STATUS UPDATED    ║
-╠═══════════════════════════╣
-║                           ║
-║  📊 *Status:* %s          ║
-║  🔄 *State:* %s           ║
-║  ✅ *Successfully Updated* ║
-║                           ║
-╚═══════════════════════════╝`, status, statusText)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ⚙️ AUTO STATUS
+╠════════════════╣
+║ 📊 Status: %s
+║ 🔄 State: %s
+║ ✅ Updated
+╚════════════════╝`, status, statusText)
 
 	replyMessage(client, v, msg)
 }
 
 func toggleStatusReact(client *whatsmeow.Client, v *events.Message) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -172,40 +164,35 @@ func toggleStatusReact(client *whatsmeow.Client, v *events.Message) {
 	}
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║  ⚙️ STATUS REACT UPDATED    ║
-╠═══════════════════════════╣
-║                           ║
-║  📊 *Status:* %s          ║
-║  🔄 *State:* %s           ║
-║  ✅ *Successfully Updated* ║
-║                           ║
-╚═══════════════════════════╝`, status, statusText)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ⚙️ STATUS REACT
+╠════════════════╣
+║ 📊 Status: %s
+║ 🔄 State: %s
+║ ✅ Updated
+╚════════════════╝`, status, statusText)
 
 	replyMessage(client, v, msg)
 }
 
 func handleAddStatus(client *whatsmeow.Client, v *events.Message, args []string) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
 	if len(args) < 1 {
-		msg := `╔═══════════════════════════╗
-║    ⚠️ INVALID FORMAT       ║
-╠═══════════════════════════╣
-║  📝 Usage:                ║
-║     .addstatus <number>   ║
-║                           ║
-║  💡 Example:              ║
-║     .addstatus 923001234567║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ⚠️ INVALID FORMAT
+╠════════════════╣
+║ 📝 .addstatus <num>
+║ 💡 .addstatus 923xx
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -215,39 +202,34 @@ func handleAddStatus(client *whatsmeow.Client, v *events.Message, args []string)
 	data.StatusTargets = append(data.StatusTargets, num)
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║   ✅ STATUS TARGET ADDED    ║
-╠═══════════════════════════╣
-║                           ║
-║  📱 *Number:* %s          ║
-║  📊 *Total Targets:* %d   ║
-║                           ║
-╚═══════════════════════════╝`, num, len(data.StatusTargets))
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ✅ TARGET ADDED
+╠════════════════╣
+║ 📱 %s
+║ 📊 Total: %d
+╚════════════════╝`, num, len(data.StatusTargets))
 
 	replyMessage(client, v, msg)
 }
 
 func handleDelStatus(client *whatsmeow.Client, v *events.Message, args []string) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
 	if len(args) < 1 {
-		msg := `╔═══════════════════════════╗
-║    ⚠️ INVALID FORMAT       ║
-╠═══════════════════════════╣
-║  📝 Usage:                ║
-║     .delstatus <number>   ║
-║                           ║
-║  💡 Example:              ║
-║     .delstatus 923001234567║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ⚠️ INVALID FORMAT
+╠════════════════╣
+║ 📝 .delstatus <num>
+║ 💡 .delstatus 923xx
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -267,21 +249,19 @@ func handleDelStatus(client *whatsmeow.Client, v *events.Message, args []string)
 	dataMutex.Unlock()
 
 	if found {
-		msg := fmt.Sprintf(`╔═══════════════════════════╗
-║  ✅ STATUS TARGET REMOVED   ║
-╠═══════════════════════════╣
-║                           ║
-║  📱 *Number:* %s          ║
-║  📊 *Remaining:* %d       ║
-║                           ║
-╚═══════════════════════════╝`, num, len(data.StatusTargets))
+		msg := fmt.Sprintf(`╔════════════════╗
+║ ✅ TARGET REMOVED
+╠════════════════╣
+║ 📱 %s
+║ 📊 Remaining: %d
+╚════════════════╝`, num, len(data.StatusTargets))
 		replyMessage(client, v, msg)
 	} else {
-		msg := `╔═══════════════════════════╗
-║    ❌ NUMBER NOT FOUND     ║
-╠═══════════════════════════╣
-║  Target number not in list║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ NOT FOUND
+╠════════════════╣
+║ Number not in list
+╚════════════════╝`
 		replyMessage(client, v, msg)
 	}
 }
@@ -296,53 +276,46 @@ func handleListStatus(client *whatsmeow.Client, v *events.Message) {
 	dataMutex.RUnlock()
 
 	if len(targets) == 0 {
-		msg := `╔═══════════════════════════╗
-║   📭 NO STATUS TARGETS     ║
-╠═══════════════════════════╣
-║  No numbers configured yet║
-║  Use .addstatus to add    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ 📭 NO TARGETS
+╠════════════════╣
+║ Use .addstatus
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
-	msg := "╔═══════════════════════════╗\n"
-	msg += "║   📜 STATUS TARGETS LIST   ║\n"
-	msg += "╠═══════════════════════════╣\n"
-	msg += "║                           ║\n"
+	msg := "╔════════════════╗\n"
+	msg += "║ 📜 STATUS TARGETS\n"
+	msg += "╠════════════════╣\n"
 	for i, t := range targets {
-		msg += fmt.Sprintf("║  %d. %s\n", i+1, t)
+		msg += fmt.Sprintf("║ %d. %s\n", i+1, t)
 	}
-	msg += "║                           ║\n"
-	msg += fmt.Sprintf("║  📊 *Total:* %d targets   ║\n", len(targets))
-	msg += "╚═══════════════════════════╝"
+	msg += fmt.Sprintf("║ 📊 Total: %d\n", len(targets))
+	msg += "╚════════════════╝"
 
 	replyMessage(client, v, msg)
 }
 
 func handleSetPrefix(client *whatsmeow.Client, v *events.Message, args []string) {
 	if !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Owner Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Owner Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
 	if len(args) < 1 {
-		msg := `╔═══════════════════════════╗
-║    ⚠️ INVALID FORMAT       ║
-╠═══════════════════════════╣
-║  📝 Usage:                ║
-║     .setprefix <symbol>   ║
-║                           ║
-║  💡 Examples:             ║
-║     .setprefix .          ║
-║     .setprefix !          ║
-║     .setprefix #          ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ⚠️ INVALID FORMAT
+╠════════════════╣
+║ 📝 .setprefix <sym>
+║ 💡 .setprefix .
+║ 💡 .setprefix !
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -352,77 +325,58 @@ func handleSetPrefix(client *whatsmeow.Client, v *events.Message, args []string)
 	data.Prefix = newPrefix
 	dataMutex.Unlock()
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║   ✅ PREFIX UPDATED         ║
-╠═══════════════════════════╣
-║                           ║
-║  🔧 *New Prefix:* %s      ║
-║  ✅ *Successfully Changed* ║
-║                           ║
-║  💡 *Example:*            ║
-║     %smenu               ║
-║                           ║
-╚═══════════════════════════╝`, newPrefix, newPrefix)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ✅ PREFIX UPDATED
+╠════════════════╣
+║ 🔧 New: %s
+║ 💡 Ex: %smenu
+╚════════════════╝`, newPrefix, newPrefix)
 
 	replyMessage(client, v, msg)
 }
 
 func handleMode(client *whatsmeow.Client, v *events.Message, args []string) {
 	if !v.Info.IsGroup {
-		msg := `╔═══════════════════════════╗
-║    ❌ GROUP ONLY COMMAND   ║
-╠═══════════════════════════╣
-║  This command works only  ║
-║  in group chats           ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ GROUP ONLY
+╠════════════════╣
+║ Works in groups
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
 	if !isAdmin(client, v.Info.Chat, v.Info.Sender) && !isOwner(client, v.Info.Sender) {
-		msg := `╔═══════════════════════════╗
-║      ❌ ACCESS DENIED      ║
-╠═══════════════════════════╣
-║  🔒 Admin Only Command    ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ ACCESS DENIED
+╠════════════════╣
+║ 🔒 Admin Only
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
 	if len(args) < 1 {
-		msg := `╔═══════════════════════════╗
-║    ⚙️ GROUP MODE SETTINGS   ║
-╠═══════════════════════════╣
-║                           ║
-║  📝 Available Modes:      ║
-║                           ║
-║  1️⃣ *public*              ║
-║     Everyone can use      ║
-║                           ║
-║  2️⃣ *private*             ║
-║     Bot disabled          ║
-║                           ║
-║  3️⃣ *admin*               ║
-║     Admin only access     ║
-║                           ║
-║  💡 Usage:                ║
-║     .mode <type>          ║
-║                           ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ⚙️ GROUP MODE
+╠════════════════╣
+║ 1️⃣ public - All
+║ 2️⃣ private - Off
+║ 3️⃣ admin - Admin
+║ 📝 .mode <type>
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
 	mode := strings.ToLower(args[0])
 	if mode != "public" && mode != "private" && mode != "admin" {
-		msg := `╔═══════════════════════════╗
-║    ❌ INVALID MODE         ║
-╠═══════════════════════════╣
-║  Valid modes:             ║
-║  • public                 ║
-║  • private                ║
-║  • admin                  ║
-╚═══════════════════════════╝`
+		msg := `╔════════════════╗
+║ ❌ INVALID MODE
+╠════════════════╣
+║ Use: public/
+║ private/admin
+╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
@@ -434,24 +388,20 @@ func handleMode(client *whatsmeow.Client, v *events.Message, args []string) {
 	var modeDesc string
 	switch mode {
 	case "public":
-		modeDesc = "Everyone can use"
+		modeDesc = "Everyone"
 	case "private":
-		modeDesc = "Bot disabled"
+		modeDesc = "Disabled"
 	case "admin":
 		modeDesc = "Admin only"
 	}
 
-	msg := fmt.Sprintf(`╔═══════════════════════════╗
-║   ✅ MODE CHANGED           ║
-╠═══════════════════════════╣
-║                           ║
-║  🛡️ *New Mode:* %s        ║
-║  📝 *Description:*        ║
-║     %s                    ║
-║                           ║
-║  ✅ *Successfully Updated* ║
-║                           ║
-╚═══════════════════════════╝`, strings.ToUpper(mode), modeDesc)
+	msg := fmt.Sprintf(`╔════════════════╗
+║ ✅ MODE CHANGED
+╠════════════════╣
+║ 🛡️ %s
+║ 📝 %s
+║ ✅ Updated
+╚════════════════╝`, strings.ToUpper(mode), modeDesc)
 
 	replyMessage(client, v, msg)
 }
@@ -463,12 +413,11 @@ func handleReadAllStatus(client *whatsmeow.Client, v *events.Message) {
 
 	client.MarkRead(context.Background(), []types.MessageID{v.Info.ID}, time.Now(), types.NewJID("status@broadcast", types.DefaultUserServer), v.Info.Sender, types.ReceiptTypeRead)
 
-	msg := `╔═══════════════════════════╗
-║  ✅ STATUSES MARKED READ    ║
-╠═══════════════════════════╣
-║  All recent statuses have ║
-║  been marked as read      ║
-╚═══════════════════════════╝`
+	msg := `╔════════════════╗
+║ ✅ STATUSES READ
+╠════════════════╣
+║ All marked read
+╚════════════════╝`
 
 	replyMessage(client, v, msg)
 }
