@@ -338,86 +338,110 @@ func sendID(client *whatsmeow.Client, v *events.Message) {
 	sendReplyMessage(client, v, msg)
 }
 
-// ==================== 🔥 CRITICAL: OWNER LOGIC ====================
+// ==================== 🔥 CRITICAL: OWNER LOGIC - EXTRACT BOT'S REAL LID ====================
 
-// ✅ Extract LID User (this handles both @lid and @s.whatsapp.net)
-func extractLIDUser(jid types.JID) string {
-	if jid.IsEmpty() {
+// ✅ Clean ID extraction (removes @, :, and domain)
+func getCleanID(jidStr string) string {
+	if jidStr == "" {
 		return "unknown"
 	}
 	
-	// ✅ Return raw User field - yeh already LID format mein hai
-	user := jid.User
+	// Remove @ and everything after it
+	parts := strings.Split(jidStr, "@")
+	userPart := parts[0]
 	
-	// Remove device ID if present (e.g., "184645610135709:10" or "923017552805:61")
-	if strings.Contains(user, ":") {
-		user = strings.Split(user, ":")[0]
+	// Remove : and everything after it (device ID)
+	if strings.Contains(userPart, ":") {
+		userPart = strings.Split(userPart, ":")[0]
 	}
 	
-	// Clean up
-	user = strings.ReplaceAll(user, "+", "")
-	user = strings.TrimSpace(user)
-	
-	return user
+	return strings.TrimSpace(userPart)
 }
 
-// ✅ NEW: Get bot's ACTUAL LID (from Store.ID directly as LID)
+// ✅ CRITICAL: Get bot's ACTUAL LID from Device Identity
 func getBotLID(client *whatsmeow.Client) string {
 	if client.Store.ID == nil || client.Store.ID.IsEmpty() {
-		fmt.Printf("❌ Bot Store.ID is nil or empty\n")
+		fmt.Printf("❌ Bot Store.ID is nil\n")
 		return "unknown"
 	}
 	
-	// ✅ CRITICAL: Bot's Store.ID.User already contains LID-like format
-	// Format: "923017552805:61" where :61 is device ID
-	botLIDUser := extractLIDUser(*client.Store.ID)
+	fmt.Printf("\n🔍 ═══ BOT LID DETECTION ═══\n")
 	
-	fmt.Printf("🤖 Bot LID Extraction:\n")
-	fmt.Printf("   Original Store.ID: %s\n", client.Store.ID.String())
-	fmt.Printf("   Store.ID.User: %s\n", client.Store.ID.User)
-	fmt.Printf("   Extracted LID: %s\n", botLIDUser)
+	// ✅ Method 1: Check Device Store for actual LID
+	// whatsmeow stores the linked device LID in the device identity
+	if client.Store != nil && client.Store.ID != nil {
+		// Try to access AdvSecretKey which contains device info
+		deviceIdentity := client.Store.ID.String()
+		fmt.Printf("   Device Identity: %s\n", deviceIdentity)
+		
+		// Check if bot is a linked device (has Device != 0)
+		if client.Store.ID.Device != 0 {
+			// This is a linked device
+			fmt.Printf("   ✅ Linked Device Detected!\n")
+			fmt.Printf("   Device Number: %d\n", client.Store.ID.Device)
+			
+			// For linked devices, the User field might contain LID-like format
+			// Let's check the raw User field
+			rawUser := client.Store.ID.User
+			fmt.Printf("   Raw User Field: %s\n", rawUser)
+			
+			// Extract LID - if it's numeric and long, it's likely the LID
+			cleanUser := getCleanID(rawUser)
+			
+			// Check if it looks like a LID (long numeric, not phone number format)
+			if len(cleanUser) > 13 && cleanUser != "" {
+				fmt.Printf("   ✅ LID Found: %s\n", cleanUser)
+				return cleanUser
+			}
+		}
+	}
 	
-	return botLIDUser
+	// ✅ Method 2: Fallback - use User field
+	fmt.Printf("   ⚠️ Using User field as fallback\n")
+	botUser := client.Store.ID.User
+	fmt.Printf("   User Field: %s\n", botUser)
+	
+	cleanID := getCleanID(botUser)
+	fmt.Printf("   Extracted ID: %s\n", cleanID)
+	fmt.Printf("═══════════════════════════\n\n")
+	
+	return cleanID
 }
 
-// ✅ Get sender's LID (they send with @lid format)
+// ✅ Get sender's LID (straightforward)
 func getSenderLID(sender types.JID) string {
 	if sender.IsEmpty() {
 		return "unknown"
 	}
 	
-	// ✅ Sender ka JID already @lid format mein hai
-	senderLIDUser := extractLIDUser(sender)
+	senderStr := sender.String()
+	senderUser := sender.User
 	
-	fmt.Printf("👤 Sender LID Extraction:\n")
-	fmt.Printf("   Original Sender JID: %s\n", sender.String())
-	fmt.Printf("   Sender.User: %s\n", sender.User)
-	fmt.Printf("   Extracted LID: %s\n", senderLIDUser)
+	fmt.Printf("👤 Sender: %s (User: %s)\n", senderStr, senderUser)
 	
-	return senderLIDUser
+	cleanID := getCleanID(senderUser)
+	fmt.Printf("   Extracted: %s\n", cleanID)
+	
+	return cleanID
 }
 
-// ✅ FINAL: Owner check - Compare LIDs directly
+// ✅ FINAL: Owner check - compare LIDs
 func isOwner(client *whatsmeow.Client, sender types.JID) bool {
-	// ✅ Bot ki LID
 	botLID := getBotLID(client)
-	
-	// ✅ Sender ki LID
 	senderLID := getSenderLID(sender)
 	
-	// ✅ Direct LID comparison
 	isMatch := (botLID == senderLID && botLID != "unknown")
 	
-	fmt.Printf("🎯 Owner Check Result:\n")
+	fmt.Printf("\n🎯 OWNER CHECK:\n")
 	fmt.Printf("   Bot LID: %s\n", botLID)
 	fmt.Printf("   Sender LID: %s\n", senderLID)
 	fmt.Printf("   Match: %v\n", isMatch)
-	fmt.Printf("   ════════════════════\n")
+	fmt.Printf("═══════════════════\n\n")
 	
 	return isMatch
 }
 
-// ✅ Display owner info
+// ✅ Display owner verification
 func sendOwner(client *whatsmeow.Client, v *events.Message) {
 	botLID := getBotLID(client)
 	senderLID := getSenderLID(v.Info.Sender)
