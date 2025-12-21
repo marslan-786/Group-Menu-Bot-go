@@ -45,7 +45,6 @@ func sendPremiumCard(client *whatsmeow.Client, v *events.Message, title, site, i
 ║ 🌐 Site: %s
 ╠══════════════════════╣
 ║ ⏳ Status: Processing...
-║ 📦 Quality: Ultra HD
 ╚══════════════════════╝
 %s`, strings.ToUpper(site), title, site, info)
 	replyMessage(client, v, card)

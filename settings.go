@@ -336,28 +336,39 @@ func handleSetPrefix(client *whatsmeow.Client, v *events.Message, args []string)
 }
 
 func handleMode(client *whatsmeow.Client, v *events.Message, args []string) {
-	if !v.Info.IsGroup {
-		msg := `╔════════════════╗
-║ ❌ GROUP ONLY
-╠════════════════╣
-║ Works in groups
-╚════════════════╝`
-		replyMessage(client, v, msg)
-		return
-	}
-
-	if !isAdmin(client, v.Info.Chat, v.Info.Sender) && !isOwner(client, v.Info.Sender) {
+	// Owner check
+	if !isOwner(client, v.Info.Sender) {
 		msg := `╔════════════════╗
 ║ ❌ ACCESS DENIED
 ╠════════════════╣
-║ 🔒 Admin Only
+║ 🔒 Owner Only
 ╚════════════════╝`
 		replyMessage(client, v, msg)
 		return
 	}
 
-	if len(args) < 1 {
-		msg := `╔════════════════╗
+	// Private chat - show all groups with their modes
+	if !v.Info.IsGroup {
+		if len(args) < 1 {
+			msg := `╔════════════════╗
+║ ⚙️ GROUP MODE
+╠════════════════╣
+║ 1️⃣ public - All
+║ 2️⃣ private - Off
+║ 3️⃣ admin - Admin
+║ 📝 .mode <type>
+║ 💡 Use in group
+║    to change mode
+╚════════════════╝`
+			replyMessage(client, v, msg)
+			return
+		}
+	}
+
+	// Group chat - change mode
+	if v.Info.IsGroup {
+		if len(args) < 1 {
+			msg := `╔════════════════╗
 ║ ⚙️ GROUP MODE
 ╠════════════════╣
 ║ 1️⃣ public - All
@@ -365,37 +376,37 @@ func handleMode(client *whatsmeow.Client, v *events.Message, args []string) {
 ║ 3️⃣ admin - Admin
 ║ 📝 .mode <type>
 ╚════════════════╝`
-		replyMessage(client, v, msg)
-		return
-	}
+			replyMessage(client, v, msg)
+			return
+		}
 
-	mode := strings.ToLower(args[0])
-	if mode != "public" && mode != "private" && mode != "admin" {
-		msg := `╔════════════════╗
+		mode := strings.ToLower(args[0])
+		if mode != "public" && mode != "private" && mode != "admin" {
+			msg := `╔════════════════╗
 ║ ❌ INVALID MODE
 ╠════════════════╣
 ║ Use: public/
 ║ private/admin
 ╚════════════════╝`
-		replyMessage(client, v, msg)
-		return
-	}
+			replyMessage(client, v, msg)
+			return
+		}
 
-	s := getGroupSettings(v.Info.Chat.String())
-	s.Mode = mode
-	saveGroupSettings(s)
+		s := getGroupSettings(v.Info.Chat.String())
+		s.Mode = mode
+		saveGroupSettings(s)
 
-	var modeDesc string
-	switch mode {
-	case "public":
-		modeDesc = "Everyone"
-	case "private":
-		modeDesc = "Disabled"
-	case "admin":
-		modeDesc = "Admin only"
-	}
+		var modeDesc string
+		switch mode {
+		case "public":
+			modeDesc = "Everyone"
+		case "private":
+			modeDesc = "Disabled"
+		case "admin":
+			modeDesc = "Admin only"
+		}
 
-	msg := fmt.Sprintf(`╔════════════════╗
+		msg := fmt.Sprintf(`╔════════════════╗
 ║ ✅ MODE CHANGED
 ╠════════════════╣
 ║ 🛡️ %s
@@ -403,7 +414,8 @@ func handleMode(client *whatsmeow.Client, v *events.Message, args []string) {
 ║ ✅ Updated
 ╚════════════════╝`, strings.ToUpper(mode), modeDesc)
 
-	replyMessage(client, v, msg)
+		replyMessage(client, v, msg)
+	}
 }
 
 func handleReadAllStatus(client *whatsmeow.Client, v *events.Message) {

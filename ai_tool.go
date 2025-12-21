@@ -196,7 +196,9 @@ func handleToPTT(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	if quoted == nil || (quoted.AudioMessage == nil && quoted.VideoMessage == nil) {
-		replyMessage(client, v, "❌ Please reply to an *Audio* or *Video*!")
+		replyMessage(client, v, "╔════════════════════╗
+║ ❌ Please reply to any voice!
+╚════════════════════╝")
 		return
 	}
 
@@ -241,7 +243,9 @@ func handleRemoveBG(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	if quoted == nil || quoted.ImageMessage == nil {
-		replyMessage(client, v, "❌ Please reply to an *Image*!")
+		replyMessage(client, v, "╔════════════════════╗
+║ ❌ Please reply to any voice!
+╚════════════════════╝")
 		return
 	}
 

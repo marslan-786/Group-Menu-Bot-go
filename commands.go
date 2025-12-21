@@ -272,7 +272,6 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		handleToImg(client, v)
 	case "tovideo":
 		handleToVideo(client, v)
-		handleRemini(client, v)
 	case "tourl":
 		handleToURL(client, v)
 	case "translate", "tr":
@@ -506,7 +505,7 @@ func sendBotsList(client *whatsmeow.Client, v *events.Message) {
 		i++
 	}
 	clientsMutex.RUnlock()
-	msg += "\n╚═══════════════════════════╝"
+	msg += "\n╚═══════════════════╝"
 	replyMessage(client, v, msg)
 }
 
@@ -539,9 +538,9 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 ╠══════════════════════╣
 ║                           
 ║ ╭─── SOCIAL DOWNLOADERS ──╮
-║ │ 🔸 *%sfb* - Facebook Video
+║ │ 🔸 *%sfb* - ✅ Facebook Video
 ║ │ 🔸 *%sig* - Instagram Reel/Post
-║ │ 🔸 *%stt* - TikTok No Watermark
+║ │ 🔸 *%stt* - ✅ TikTok No Watermark
 ║ │ 🔸 *%stw* - Twitter/X Media
 ║ │ 🔸 *%spin* - Pinterest Downloader
 ║ │ 🔸 *%sthreads* - Threads Video
@@ -550,8 +549,8 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 ║ ╰───────────────────────╯
 ║                             
 ║ ╭─── VIDEO & STREAMS ────╮
-║ │ 🔸 *%sytmp4* - YouTube Video
-║ │ 🔸 *%sytmp3* - YouTube Audio
+║ │ 🔸 *%sytmp4* - ✅ YouTube Video
+║ │ 🔸 *%sytmp3* - ✅ YouTube Audio
 ║ │ 🔸 *%stwitch* - Twitch Clips
 ║ │ 🔸 *%sdm* - DailyMotion HQ
 ║ │ 🔸 *%svimeo* - Vimeo Pro Video
@@ -599,18 +598,18 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 ║ ╰────────────────────────╯
 ║                             
 ║ ╭────── PREVIEW TOOLS ─────╮
-║ │ 🔸 *%sstats* - Server Dashboard
-║ │ 🔸 *%sspeed* - Internet Speed
+║ │ 🔸 *%sstats* - ✅ Server Dashboard
+║ │ 🔸 *%sspeed* - ✅ Internet Speed
 ║ │ 🔸 *%sss* - Web Screenshot
 ║ │ 🔸 *%sai* - Artificial Intelligence
-║ │ 🔸 *%sgoogle* - Fast Search
-║ │ 🔸 *%sweather* - Climate Info
+║ │ 🔸 *%sgoogle* - ✅ Fast Search
+║ │ 🔸 *%sweather* - ✅ Climate Info
 ║ │ 🔸 *%sremini* - HD Image Upscaler
 ║ │ 🔸 *%sremovebg* - Background Eraser
 ║ │ 🔸 *%sfancy* - Stylish Text
-║ │ 🔸 *%stoptt* - Convert to Voice
-║ │ 🔸 *%svv* - ViewOnce Bypass
-║ │ 🔸 *%ssticker* - Image to Sticker
+║ │ 🔸 *%stoptt* - ✅ Convert to Audio
+║ │ 🔸 *%svv* - ✅ ViewOnce Bypass
+║ │ 🔸 *%ssticker* - ✅ Image to Sticker
 ║ │ 🔸 *%stoimg* - Sticker to Image
 ║ │ 🔸 *%sgit* - GitHub Downloader
 ║ │ 🔸 *%sarchive* - Internet Archive
@@ -648,9 +647,9 @@ func sendPing(client *whatsmeow.Client, v *events.Message) {
 ║ 🚀 Speed: %d MS
 ║ ⏱️ Uptime: %s
 ║ 👑 Dev: %s
-╠════════════════╣
-║ 🟢 System Running
-╚════════════════╝`, ms, uptimeStr, OWNER_NAME)
+╠════════════════════╣
+║      🟢 System Running
+╚════════════════════╝`, ms, uptimeStr, OWNER_NAME)
 	sendReplyMessage(client, v, msg)
 }
 
