@@ -555,3 +555,32 @@ func saveGroupSettings(s *GroupSettings) {
 	groupCache[s.ChatID] = s
 	cacheMutex.Unlock()
 }
+// 🆕 یہ فنکشن ہر 1 منٹ بعد چیک کرتا ہے کہ کیا کوئی نیا سیشن ایڈ ہوا ہے
+func monitorNewSessions(container *sqlstore.Container) {
+	ticker := time.NewTicker(60 * time.Second) // 1 منٹ کا ٹائمر
+	defer ticker.Stop()
+
+	for range ticker.C {
+		// ڈیٹا بیس سے تمام ڈیوائسز نکالیں
+		devices, err := container.GetAllDevices(context.Background())
+		if err != nil {
+			continue
+		}
+
+		for _, device := range devices {
+			botID := getCleanID(device.ID.User)
+			
+			// چیک کریں کہ کیا یہ بوٹ پہلے سے چل رہا ہے؟
+			clientsMutex.RLock()
+			_, exists := activeClients[botID]
+			clientsMutex.RUnlock()
+
+			// اگر نہیں چل رہا تو اسے کنیکٹ کریں
+			if !exists {
+				fmt.Printf("\n🆕 [AUTO-CONNECT] New session detected: %s. Connecting...\n", botID)
+				go ConnectNewSession(device)
+				time.Sleep(5 * time.Second) // سرور پر لوڈ کم کرنے کے لئے وقفہ
+			}
+		}
+	}
+}
