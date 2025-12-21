@@ -11,6 +11,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
+	"google.golang.org/protobuf/proto"
 )
 
 // ==================== سیکورٹی سسٹم ====================
@@ -97,13 +98,14 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 ║ User: @%s
 ╚════════════════╝`, reason, v.Info.Sender.User)
 		
+		senderStr := v.Info.Sender.String()
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: &msg,
+				Text: proto.String(msg),
 				ContextInfo: &waProto.ContextInfo{
-					MentionedJID: []string{v.Info.Sender.String()},
-					StanzaID:     &v.Info.ID,
-					Participant:  &v.Info.Sender.String(),
+					MentionedJID: []string{senderStr},
+					StanzaID:     proto.String(v.Info.ID),
+					Participant:  proto.String(senderStr),
 				},
 			},
 		})
@@ -148,11 +150,12 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 ║ Action: Delete+Kick
 ╚════════════════╝`, reason, v.Info.Sender.User)
 		
+		senderStr := v.Info.Sender.String()
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: &msg,
+				Text: proto.String(msg),
 				ContextInfo: &waProto.ContextInfo{
-					MentionedJID: []string{v.Info.Sender.String()},
+					MentionedJID: []string{senderStr},
 				},
 			},
 		})
@@ -204,11 +207,12 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 ║ Kicked Out
 ╚════════════════╝`, v.Info.Sender.User)
 			
+			senderStr := v.Info.Sender.String()
 			client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 				ExtendedTextMessage: &waProto.ExtendedTextMessage{
-					Text: &msg,
+					Text: proto.String(msg),
 					ContextInfo: &waProto.ContextInfo{
-						MentionedJID: []string{v.Info.Sender.String()},
+						MentionedJID: []string{senderStr},
 					},
 				},
 			})
@@ -222,13 +226,14 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 ║ 3 = Kick
 ╚════════════════╝`, v.Info.Sender.User, warnCount, reason)
 			
+			senderStr := v.Info.Sender.String()
 			client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 				ExtendedTextMessage: &waProto.ExtendedTextMessage{
-					Text: &msg,
+					Text: proto.String(msg),
 					ContextInfo: &waProto.ContextInfo{
-						MentionedJID: []string{v.Info.Sender.String()},
-						StanzaID:     &v.Info.ID,
-						Participant:  &v.Info.Sender.String(),
+						MentionedJID: []string{senderStr},
+						StanzaID:     proto.String(v.Info.ID),
+						Participant:  proto.String(senderStr),
 					},
 				},
 			})
@@ -407,11 +412,12 @@ func handleGroupInfoChange(client *whatsmeow.Client, v *events.GroupInfo) {
 ║ By: Admin
 ╚════════════════╝`, left.User)
 
+				leftStr := left.String()
 				client.SendMessage(context.Background(), v.JID, &waProto.Message{
 					ExtendedTextMessage: &waProto.ExtendedTextMessage{
-						Text: &msg,
+						Text: proto.String(msg),
 						ContextInfo: &waProto.ContextInfo{
-							MentionedJID: []string{left.String()},
+							MentionedJID: []string{leftStr},
 						},
 					},
 				})
@@ -424,11 +430,12 @@ func handleGroupInfoChange(client *whatsmeow.Client, v *events.GroupInfo) {
 ║ Left manually
 ╚════════════════╝`, left.User)
 
+				leftStr := left.String()
 				client.SendMessage(context.Background(), v.JID, &waProto.Message{
 					ExtendedTextMessage: &waProto.ExtendedTextMessage{
-						Text: &msg,
+						Text: proto.String(msg),
 						ContextInfo: &waProto.ContextInfo{
-							MentionedJID: []string{left.String()},
+							MentionedJID: []string{leftStr},
 						},
 					},
 				})
@@ -446,11 +453,12 @@ func handleGroupInfoChange(client *whatsmeow.Client, v *events.GroupInfo) {
 ║ 🎉 Congrats!
 ╚════════════════╝`, promoted.User)
 
+			promotedStr := promoted.String()
 			client.SendMessage(context.Background(), v.JID, &waProto.Message{
 				ExtendedTextMessage: &waProto.ExtendedTextMessage{
-					Text: &msg,
+					Text: proto.String(msg),
 					ContextInfo: &waProto.ContextInfo{
-						MentionedJID: []string{promoted.String()},
+						MentionedJID: []string{promotedStr},
 					},
 				},
 			})
@@ -467,11 +475,12 @@ func handleGroupInfoChange(client *whatsmeow.Client, v *events.GroupInfo) {
 ║ 📉 Removed
 ╚════════════════╝`, demoted.User)
 
+			demotedStr := demoted.String()
 			client.SendMessage(context.Background(), v.JID, &waProto.Message{
 				ExtendedTextMessage: &waProto.ExtendedTextMessage{
-					Text: &msg,
+					Text: proto.String(msg),
 					ContextInfo: &waProto.ContextInfo{
-						MentionedJID: []string{demoted.String()},
+						MentionedJID: []string{demotedStr},
 					},
 				},
 			})
@@ -488,11 +497,12 @@ func handleGroupInfoChange(client *whatsmeow.Client, v *events.GroupInfo) {
 ║ 🎉 Welcome!
 ╚════════════════╝`, joined.User)
 
+			joinedStr := joined.String()
 			client.SendMessage(context.Background(), v.JID, &waProto.Message{
 				ExtendedTextMessage: &waProto.ExtendedTextMessage{
-					Text: &msg,
+					Text: proto.String(msg),
 					ContextInfo: &waProto.ContextInfo{
-						MentionedJID: []string{joined.String()},
+						MentionedJID: []string{joinedStr},
 					},
 				},
 			})
