@@ -416,95 +416,113 @@ func handleTranslate(client *whatsmeow.Client, v *events.Message, args []string)
 }
 
 func handleVV(client *whatsmeow.Client, v *events.Message) {
+	// 1. React to the command
 	react(client, v.Info.Chat, v.Info.ID, "🫣")
 
+	// 2. Identify the quoted message
 	if v.Message.GetExtendedTextMessage().GetContextInfo() == nil {
-		replyMessage(client, v, "⚠️ Please reply to a View Once media.")
+		replyMessage(client, v, "╔═══════════════════╗\n║   ⚠️  REPLY NEEDED  \n╠═══════════════════╣\n║ Please reply to a \n║ media message.    \n╚═══════════════════╝")
 		return
 	}
 
 	quoted := v.Message.GetExtendedTextMessage().GetContextInfo().GetQuotedMessage()
 	if quoted == nil {
-		replyMessage(client, v, "❌ Media not found.")
 		return
 	}
 
-	// Media extraction
-	var img = quoted.GetImageMessage()
-	var vid = quoted.GetVideoMessage()
-	var aud = quoted.GetAudioMessage()
-	
-	if quoted.GetViewOnceMessage().GetMessage() != nil {
-		msg := quoted.GetViewOnceMessage().GetMessage()
-		if msg.ImageMessage != nil { img = msg.ImageMessage }
-		if msg.VideoMessage != nil { vid = msg.VideoMessage }
-	} else if quoted.GetViewOnceMessageV2().GetMessage() != nil {
-		msg := quoted.GetViewOnceMessageV2().GetMessage()
-		if msg.ImageMessage != nil { img = msg.ImageMessage }
-		if msg.VideoMessage != nil { vid = msg.VideoMessage }
+	// 3. Media Extraction (Simple & Direct)
+	var (
+		imgMsg *waProto.ImageMessage
+		vidMsg *waProto.VideoMessage
+		audMsg *waProto.AudioMessage
+	)
+
+	// Check if it's a normal message or wrapped in ViewOnce
+	if quoted.ImageMessage != nil {
+		imgMsg = quoted.ImageMessage
+	} else if quoted.VideoMessage != nil {
+		vidMsg = quoted.VideoMessage
+	} else if quoted.AudioMessage != nil {
+		audMsg = quoted.AudioMessage
+	} else if quoted.ViewOnceMessage != nil {
+		imgMsg = quoted.ViewOnceMessage.Message.ImageMessage
+		vidMsg = quoted.ViewOnceMessage.Message.VideoMessage
+	} else if quoted.ViewOnceMessageV2 != nil {
+		imgMsg = quoted.ViewOnceMessageV2.Message.ImageMessage
+		vidMsg = quoted.ViewOnceMessageV2.Message.VideoMessage
 	}
 
+	// 4. Download and Upload Logic
 	ctx := context.Background()
-	var data []byte
-	var err error
-	var msgToSend *waProto.Message
+	var (
+		data []byte
+		err  error
+		finalMsg = &waProto.Message{}
+		caption  = "📂 *MEDIA RETRIEVED*\n\n✅ Successfully copied the message"
+	)
 
-	// Download & Send Process
-	if img != nil {
-		data, err = client.Download(ctx, img)
+	if imgMsg != nil {
+		fmt.Println("📸 [VV-LOG] Downloading Image...")
+		data, err = client.Download(ctx, imgMsg)
 		if err == nil {
 			up, _ := client.Upload(ctx, data, whatsmeow.MediaImage)
-			msgToSend = &waProto.Message{ImageMessage: &waProto.ImageMessage{
-				URL:        proto.String(up.URL),
-				DirectPath: proto.String(up.DirectPath),
-				MediaKey:   up.MediaKey,
-				Mimetype:   proto.String("image/jpeg"),
-				Caption:    proto.String("🫣 Media Copied"),
-			}}
+			finalMsg.ImageMessage = &waProto.ImageMessage{
+				URL:           proto.String(up.URL),
+				DirectPath:    proto.String(up.DirectPath),
+				MediaKey:      up.MediaKey,
+				Mimetype:      proto.String("image/jpeg"),
+				FileEncSHA256: up.FileEncSHA256,
+				FileSHA256:    up.FileSHA256,
+				Caption:       proto.String(caption),
+			}
 		}
-	} else if vid != nil {
-		data, err = client.Download(ctx, vid)
+	} else if vidMsg != nil {
+		fmt.Println("🎥 [VV-LOG] Downloading Video...")
+		data, err = client.Download(ctx, vidMsg)
 		if err == nil {
 			up, _ := client.Upload(ctx, data, whatsmeow.MediaVideo)
-			msgToSend = &waProto.Message{VideoMessage: &waProto.VideoMessage{
-				URL:        proto.String(up.URL),
-				DirectPath: proto.String(up.DirectPath),
-				MediaKey:   up.MediaKey,
-				Mimetype:   proto.String("video/mp4"),
-				Caption:    proto.String("🫣 Media Copied"),
-			}}
+			finalMsg.VideoMessage = &waProto.VideoMessage{
+				URL:           proto.String(up.URL),
+				DirectPath:    proto.String(up.DirectPath),
+				MediaKey:      up.MediaKey,
+				Mimetype:      proto.String("video/mp4"),
+				FileEncSHA256: up.FileEncSHA256,
+				FileSHA256:    up.FileSHA256,
+				Caption:       proto.String(caption),
+			}
 		}
-	} else if aud != nil {
-		data, err = client.Download(ctx, aud)
+	} else if audMsg != nil {
+		fmt.Println("🎤 [VV-LOG] Downloading Audio...")
+		data, err = client.Download(ctx, audMsg)
 		if err == nil {
 			up, _ := client.Upload(ctx, data, whatsmeow.MediaAudio)
-			msgToSend = &waProto.Message{AudioMessage: &waProto.AudioMessage{
-				URL:        proto.String(up.URL),
-				DirectPath: proto.String(up.DirectPath),
-				MediaKey:   up.MediaKey,
-				Mimetype:   proto.String("audio/ogg; codecs=opus"),
-				PTT:        proto.Bool(true),
-			}}
+			finalMsg.AudioMessage = &waProto.AudioMessage{
+				URL:           proto.String(up.URL),
+				DirectPath:    proto.String(up.DirectPath),
+				MediaKey:      up.MediaKey,
+				Mimetype:      proto.String("audio/ogg; codecs=opus"),
+				FileEncSHA256: up.FileEncSHA256,
+				FileSHA256:    up.FileSHA256,
+				PTT:           proto.Bool(false),
+			}
 		}
 	}
 
-	if err != nil || msgToSend == nil {
-		fmt.Printf("❌ [VV-FAIL] Error: %v\n", err)
-		replyMessage(client, v, "❌ Failed to retrieve media. Message might be expired.")
+	// 5. Final Send (Clean Send)
+	if finalMsg.ImageMessage == nil && finalMsg.VideoMessage == nil && finalMsg.AudioMessage == nil {
+		fmt.Println("❌ [VV-LOG] Media extraction failed or unsupported type.")
+		replyMessage(client, v, "╔═══════════════════╗\n║  ❌ NOT SUPPORTED   \n╠═══════════════════╣\n║ This media type is \n║ not supported.     \n╚═══════════════════╝")
 		return
 	}
 
-	// ✅ اہم تبدیلی: ہم رپلائی (QuotedMessage) کو ہٹا رہے ہیں تاکہ میسج ڈراپ نہ ہو
-	msgToSend.GetImageMessage().ContextInfo = &waProto.ContextInfo{
-		StanzaID:    proto.String(v.Info.ID),
-		Participant: proto.String(v.Info.Sender.String()),
+	// We are NOT adding ContextInfo with QuotedMessage here to ensure delivery
+	_, sendErr := client.SendMessage(ctx, v.Info.Chat, finalMsg)
+	if sendErr != nil {
+		fmt.Printf("❌ [VV-LOG] Send error: %v\n", sendErr)
+	} else {
+		fmt.Println("🚀 [VV-LOG] Success! Media sent.")
 	}
-
-	client.SendMessage(ctx, v.Info.Chat, msgToSend)
 }
-
-
-
 
 
 // ==================== میڈیا ہیلپرز ====================
