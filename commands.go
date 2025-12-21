@@ -298,6 +298,104 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		handleYTDownloadMenu(client, v, fullArgs)
 	case "ytmp3":
 		handleYTDownload(client, v, fullArgs, "mp3", true)
+    // 📥 سوشل میڈیا ڈاؤنلوڈرز (Social Media Atom Bombs)
+	case "fb", "facebook":
+		handleFacebook(client, v, fullArgs)
+	case "ig", "insta", "instagram":
+		handleInstagram(client, v, fullArgs)
+	case "tt", "tiktok":
+		handleTikTok(client, v, fullArgs)
+	case "tw", "x", "twitter":
+		handleTwitter(client, v, fullArgs)
+	case "pin", "pinterest":
+		handlePinterest(client, v, fullArgs)
+	case "threads":
+		handleThreads(client, v, fullArgs)
+	case "snap", "snapchat":
+		handleSnapchat(client, v, fullArgs)
+	case "reddit":
+		handleReddit(client, v, fullArgs)
+	// 📺 ویڈیو اور اسٹریم ڈاؤنلوڈرز (High-End Streams)
+	case "ytmp4", "ytv", "youtube":
+		handleYoutubeVideo(client, v, fullArgs)
+	case "ytmp3", "yta":
+		handleYoutubeAudio(client, v, fullArgs)
+	case "twitch":
+		handleTwitch(client, v, fullArgs)
+	case "dm", "dailymotion":
+		handleDailyMotion(client, v, fullArgs)
+	case "vimeo":
+		handleVimeo(client, v, fullArgs)
+	case "rumble":
+		handleRumble(client, v, fullArgs)
+	case "bilibili":
+		handleBilibili(client, v, fullArgs)
+	case "douyin":
+		handleDouyin(client, v, fullArgs)
+	case "kwai":
+		handleKwai(client, v, fullArgs)
+	case "bitchute":
+		handleBitChute(client, v, fullArgs)
+	// 🎵 میوزک پلیٹ فارمز (HQ Audio Rippers)
+	case "sc", "soundcloud":
+		handleSoundCloud(client, v, fullArgs)
+	case "spotify":
+		handleSpotify(client, v, fullArgs)
+	case "apple", "applemusic":
+		handleAppleMusic(client, v, fullArgs)
+	case "deezer":
+		handleDeezer(client, v, fullArgs)
+	case "tidal":
+		handleTidal(client, v, fullArgs)
+	case "mixcloud":
+		handleMixcloud(client, v, fullArgs)
+	case "napster":
+		handleNapster(client, v, fullArgs)
+	case "bandcamp":
+		handleBandcamp(client, v, fullArgs)
+	// 🖼️ فوٹو اور میمز (Media Assets)
+	case "imgur":
+		handleImgur(client, v, fullArgs)
+	case "giphy":
+		handleGiphy(client, v, fullArgs)
+	case "flickr":
+		handleFlickr(client, v, fullArgs)
+	case "9gag":
+		handle9Gag(client, v, fullArgs)
+	case "ifunny":
+		handleIfunny(client, v, fullArgs)
+	// 🛠️ ہیوی ٹولز اور یوٹیلیٹیز (Daily Pure Weapons)
+	case "stats", "server", "dashboard":
+		handleServerStats(client, v)
+	case "speed", "speedtest":
+		handleSpeedTest(client, v)
+	case "ss", "snap", "screenshot":
+		handleScreenshot(client, v, fullArgs)
+	case "ai", "chat", "impossible":
+		handleAI(client, v, fullArgs)
+	case "google", "search":
+		handleGoogle(client, v, fullArgs)
+	case "weather":
+		handleWeather(client, v, fullArgs)
+	case "remini", "upscale", "hd":
+		handleRemini(client, v)
+	case "removebg", "rbg":
+		handleRemoveBG(client, v)
+	case "fancy", "style":
+		handleFancy(client, v, fullArgs)
+	case "toptt", "voice":
+		handleToPTT(client, v)
+	case "ted":
+		handleTed(client, v, fullArgs)
+	case "steam":
+		handleSteam(client, v, fullArgs)
+	case "archive":
+		handleArchive(client, v, fullArgs)
+	case "git", "github":
+		handleGithub(client, v, fullArgs)
+	// 📥 یونیورسل ڈاؤنلوڈر (The Scientist's Nightmare)
+	case "dl", "download", "mega":
+		handleMega(client, v, fullArgs)
 	}
 }
 
@@ -446,55 +544,97 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 	currentMode := strings.ToUpper(s.Mode)
 	if !strings.Contains(v.Info.Chat.String(), "@g.us") { currentMode = "PRIVATE" }
 
-	menu := fmt.Sprintf(`╔═════════════════╗
-║   %s   
-╠═════════════════╣
-║ 👋 *Assalam-o-Alaikum* ║ 👑 *Owner:* %s              
+    menu := fmt.Sprintf(`╔══════════════════════╗
+║     ✨ %s ✨     
+╠══════════════════════╣
+║ 👋 *Assalam-o-Alaikum*
+║ 👑 *Owner:* %s              
 ║ 🛡️ *Mode:* %s               
 ║ ⏳ *Uptime:* %s             
-╠═════════════════╣
+╠══════════════════════╣
 ║                           
-║  ╭─────── DOWNLOADERS─╮
-║  │ 🔸 *%sfb* - Facebook   
-║  │ 🔸 *%sig* - Instagram  
-║  │ 🔸 *%spin* - Pinterest 
-║  │ 🔸 *%stiktok* - TikTok 
-║  │ 🔸 *%sytmp3* - YT Audio
-║  │ 🔸 *%sytmp4* - YT Video 
-║  ╰───────────────────╯
+║ ╭─── SOCIAL DOWNLOADERS ──╮
+║ │ 🔸 *%sfb* - Facebook Video
+║ │ 🔸 *%sig* - Instagram Reel/Post
+║ │ 🔸 *%stt* - TikTok No Watermark
+║ │ 🔸 *%stw* - Twitter/X Media
+║ │ 🔸 *%spin* - Pinterest Downloader
+║ │ 🔸 *%sthreads* - Threads Video
+║ │ 🔸 *%ssnap* - Snapchat Content
+║ │ 🔸 *%sreddit* - Reddit with Audio
+║ ╰───────────────────────╯
 ║                             
-║  ╭─────── GROUP ──────╮
-║  │ 🔸 *%sadd* - Add Member
-║  │ 🔸 *%sdemote* - Demote 
-║  │ 🔸 *%sgroup* - Settings
-║  │ 🔸 *%shidetag* - Hidden
-║  │ 🔸 *%skick* - Remove    
-║  │ 🔸 *%spromote* - Admin
-║  │ 🔸 *%stagall* - Mention
-║  ╰───────────────────╯
+║ ╭─── VIDEO & STREAMS ────╮
+║ │ 🔸 *%sytmp4* - YouTube Video
+║ │ 🔸 *%sytmp3* - YouTube Audio
+║ │ 🔸 *%stwitch* - Twitch Clips
+║ │ 🔸 *%sdm* - DailyMotion HQ
+║ │ 🔸 *%svimeo* - Vimeo Pro Video
+║ │ 🔸 *%srumble* - Rumble Stream
+║ │ 🔸 *%sbilibili* - Bilibili Anime
+║ │ 🔸 *%sdouyin* - Chinese TikTok
+║ │ 🔸 *%skwai* - Kwai Short Video
+║ │ 🔸 *%sbitchute* - BitChute Alt
+║ ╰───────────────────────╯
+║
+║ ╭─── MUSIC PLATFORMS ────╮
+║ │ 🔸 *%ssc* - SoundCloud Music
+║ │ 🔸 *%sspotify* - Spotify Track
+║ │ 🔸 *%sapple* - Apple Music
+║ │ 🔸 *%sdeezer* - Deezer Rippin
+║ │ 🔸 *%stidal* - Tidal HQ Audio
+║ │ 🔸 *%smixcloud* - DJ Mixsets
+║ │ 🔸 *%snapster* - Napster Legacy
+║ │ 🔸 *%sbandcamp* - Indie Music
+║ ╰───────────────────────╯
 ║                             
-║  ╭──── SETTINGS ───╮
-║  │ 🔸 *%saddstatus* ║  │ 🔸 *%salwaysonline* ║  │ 🔸 *%santilink* ║  │ 🔸 *%santipic* ║  │ 🔸 *%santisticker* ║  │ 🔸 *%santivideo* ║  │ 🔸 *%sautoreact* ║  │ 🔸 *%sautoread* ║  │ 🔸 *%sautostatus* ║  │ 🔸 *%sdelstatus* ║  │ 🔸 *%sliststatus* ║  │ 🔸 *%smode* ║  │ 🔸 *%sowner* ║  │ 🔸 *%sreadallstatus* ║  │ 🔸 *%sstatusreact* ║  ╰─────────────────╯
+║ ╭────── GROUP ADMIN ──────╮
+║ │ 🔸 *%sadd* - Add New Member
+║ │ 🔸 *%sdemote* - Remove Admin
+║ │ 🔸 *%sgroup* - Group Settings
+║ │ 🔸 *%shidetag* - Hidden Mention
+║ │ 🔸 *%skick* - Remove Member    
+║ │ 🔸 *%spromote* - Make Admin
+║ │ 🔸 *%stagall* - Mention Everyone
+║ ╰───────────────────────╯
 ║                             
-║  ╭─────── TOOLS ───────╮
-║  │ 🔸 *%sdata* - DB Status
-║  │ 🔸 *%sid* - Get ID      
-║  │ 🔸 *%slistbots* - Bots🆕
-║  │ 🔸 *%sping* - Speed     
-║  │ 🔸 *%sremini* - Enhance
-║  │ 🔸 *%sremovebg* - BG  
-║  │ 🔸 *%ssticker* - Create 
-║  │ 🔸 *%stoimg* - Convert 
-║  │ 🔸 *%stourl* - Upload  
-║  │ 🔸 *%stovideo* - Make 
-║  │ 🔸 *%stranslate* - Lang
-║  │ 🔸 *%svv* - ViewOnce 
-║  │ 🔸 *%sweather* - Info
-║  ╰────────────────────╯
+║ ╭──── BOT SETTINGS ─────╮
+║ │ 🔸 *%saddstatus* - Auto Status
+║ │ 🔸 *%salwaysonline* - Online 24/7
+║ │ 🔸 *%santilink* - Link Protection
+║ │ 🔸 *%santipic* - No Images Mode
+║ │ 🔸 *%santisticker* - No Stickers
+║ │ 🔸 *%santivideo* - No Video Mode
+║ │ 🔸 *%sautoreact* - Automatic React
+║ │ 🔸 *%sautoread* - Blue Tick Mark
+║ │ 🔸 *%sautostatus* - Status View
+║ │ 🔸 *%sdelstatus* - Remove Status
+║ │ 🔸 *%smode* - Private/Public
+║ │ 🔸 *%sstatusreact* - React Status
+║ ╰────────────────────────╯
+║                             
+║ ╭────── PREVIEW TOOLS ─────╮
+║ │ 🔸 *%sstats* - Server Dashboard
+║ │ 🔸 *%sspeed* - Internet Speed
+║ │ 🔸 *%sss* - Web Screenshot
+║ │ 🔸 *%sai* - Artificial Intelligence
+║ │ 🔸 *%sgoogle* - Fast Search
+║ │ 🔸 *%sweather* - Climate Info
+║ │ 🔸 *%sremini* - HD Image Upscaler
+║ │ 🔸 *%sremovebg* - Background Eraser
+║ │ 🔸 *%sfancy* - Stylish Text
+║ │ 🔸 *%stoptt* - Convert to Voice
+║ │ 🔸 *%svv* - ViewOnce Bypass
+║ │ 🔸 *%ssticker* - Image to Sticker
+║ │ 🔸 *%stoimg* - Sticker to Image
+║ │ 🔸 *%sgit* - GitHub Downloader
+║ │ 🔸 *%sarchive* - Internet Archive
+║ │ 🔸 *%smega* - Universal Downloader
+║ ╰─────────────────────────╯
 ║                           
-╠═════════════════════╣
+╠══════════════════════╣
 ║ © 2025 Nothing is Impossible 
-╚═════════════════════╝`,
+╚══════════════════════╝`,
 		BOT_NAME, OWNER_NAME, currentMode, uptimeStr,
 		p, p, p, p, p, p,
 		p, p, p, p, p, p, p,
