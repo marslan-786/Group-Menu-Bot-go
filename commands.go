@@ -23,19 +23,22 @@ var (
 	globalClient *whatsmeow.Client
 )
 
-func handler(evt interface{}) {
-	client := globalClient
-	if client == nil {
+func handler(botClient *whatsmeow.Client, evt interface{}) {
+	// اب ہمیں گلوبل کلائنٹ کی ضرورت نہیں، ہم وہ کلائنٹ استعمال کریں گے جس نے ایونٹ بھیجا ہے
+	if botClient == nil {
 		return
 	}
 	
 	switch v := evt.(type) {
 	case *events.Message:
-		go processMessage(client, v)
+		// میسج پروسیسنگ کے لیے اسی مخصوص بوٹ کا کلائنٹ بھیجیں
+		go processMessage(botClient, v)
 	case *events.GroupInfo:
-		go handleGroupInfoChange(client, v)
+		// گروپ تبدیلیوں کے لیے بھی وہی کلائنٹ
+		go handleGroupInfoChange(botClient, v)
 	}
 }
+
 
 func isKnownCommand(text string) bool {
 	commands := []string{
@@ -592,24 +595,33 @@ func saveGroupSettings(s *GroupSettings) {
 }
 
 func ConnectNewSession(device *store.Device) {
+	// 1. کلائنٹ لاگ سیٹ اپ
 	clientLog := waLog.Stdout("Client", "DEBUG", true)
 	client := whatsmeow.NewClient(device, clientLog)
 	
-	SetGlobalClient(client)
-	client.AddEventHandler(handler)
+	// ❌ SetGlobalClient(client) -- اس لائن کو نکال دیا ہے کیونکہ یہ ملٹی بوٹ کے لیے غلط ہے
+
+	// 2. ہینڈلر رجسٹریشن (Closure استعمال کرتے ہوئے)
+	// اس سے ہر بوٹ کو اپنا 'client' ملے گا
+	client.AddEventHandler(func(evt interface{}) {
+		handler(client, evt)
+	})
 
 	botID := getCleanID(device.ID.User)
 	
+	// 3. کنکشن قائم کرنا
 	err := client.Connect()
 	if err != nil {
 		fmt.Printf("❌ [MULTI-BOT] نمبر %s کنیکٹ نہیں ہو سکا: %v\n", botID, err)
 		return
 	}
 
+	// 4. ایکٹو کلائنٹس کی لسٹ میں محفوظ کرنا (Safe Concurrency)
 	clientsMutex.Lock()
 	activeClients[botID] = client
 	clientsMutex.Unlock()
 
+	// 5. کامیابی کا میسج
 	lidStr := device.LID.String()
 	fmt.Printf(`
 ╔═══════════════════════════════════╗
@@ -621,6 +633,7 @@ func ConnectNewSession(device *store.Device) {
 ╚═══════════════════════════════════╝
 `, botID, getCleanID(lidStr), time.Now().Format("15:04:05"))
 }
+
 
 func StartAllBots(container *sqlstore.Container) {
 	ctx := context.Background()
