@@ -78,32 +78,29 @@ func isKnownCommand(text string) bool {
 }
 
 func processMessage(client *whatsmeow.Client, v *events.Message) {
-	// 1. بنیادی ویری ایبلز (صرف ایک بار ڈکلیئر کریں - الٹرا فاسٹ)
+	// ⚡ اسپیڈ بوسٹ #1: میموری سے آئی ڈی اور پریفکس اٹھائیں (0.001ms)
 	rawBotID := client.Store.ID.User
-	botID, exists := botCleanIDCache[rawBotID]
-	if !exists {
-		botID = getCleanID(rawBotID)
-		botCleanIDCache[rawBotID] = botID
-	}
+	botID := botCleanIDCache[rawBotID]
+	if botID == "" { botID = getCleanID(rawBotID) } // Safety backup
 	
-	chatID := v.Info.Chat.String()
-	senderID := v.Info.Sender.String()
-	isGroup := v.Info.IsGroup
+	prefix := getPrefix(botID)
+
+	// بنیادی ویری ایبلز
 	bodyRaw := getText(v.Message)
 	if bodyRaw == "" { return }
 	bodyClean := strings.TrimSpace(bodyRaw)
-	
-	// پریفکس میموری سے حاصل کریں
-	prefix := getPrefix(botID)
+	senderID := v.Info.Sender.String()
+	chatID := v.Info.Chat.String()
+	isGroup := v.Info.IsGroup
 
-	// 🛠️ ⚡ اسپیڈ بوسٹ فلٹر (Early Exit)
+	// 🛠️ ⚡ اسپیڈ بوسٹ #2: Early Exit (فلٹر)
 	_, isTT := ttCache[senderID]
 	_, isYTS := ytCache[senderID]
 	_, isYTSelect := ytDownloadCache[chatID]
 	isSetup := false
 	if state, ok := setupMap[senderID]; ok && state.GroupID == chatID { isSetup = true }
 
-	// 🚀 اگر یہ کمانڈ نہیں ہے اور نہ ہی کوئی ایکٹیو سیشن ہے، تو بوٹ یہیں رک جائے گا
+	// اگر یہ کمانڈ نہیں ہے تو بوٹ یہیں مر جائے گا (سائنس دانوں کا وقت بچانے کے لئے)
 	if !strings.HasPrefix(bodyClean, prefix) && !isTT && !isYTS && !isYTSelect && !isSetup && chatID != "status@broadcast" {
 		return 
 	}
@@ -140,10 +137,12 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 
 	// 5. گروپ سیکیورٹی چیک
 	if isGroup {
-		checkSecurity(client, v)
+		go checkSecurity(client, v) // گوروٹین میں تاکہ میسج پروسیسنگ نہ رکے
 	}
 
 	// 6. 🛠️ انٹرایکٹو آپشنز (TikTok/YouTube)
+	
+	// ✅ ٹک ٹاک سلیکشن (آپ کا فیورٹ کارڈ اسٹائل)
 	if isTT {
 		state := ttCache[senderID]
 		if bodyClean == "1" {
@@ -156,12 +155,19 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 			return
 		} else if bodyClean == "3" {
 			delete(ttCache, senderID)
-			infoMsg := fmt.Sprintf("╔═══════════════════╗\n║ 📄 TIKTOK INFO\n╠═══════════════════╣\n║ 📝 Title: %s\n║ 📊 Size: %.2f MB\n╚═══════════════════╝", state.Title, float64(state.Size)/(1024*1024))
+			infoMsg := fmt.Sprintf(`╔═══════════════════╗
+║ 📄 TIKTOK INFO      
+╠═══════════════════╣
+║ 📝 Title: %s
+║ 📊 Size: %.2f MB
+║ ✨ Status: Success
+╚═══════════════════╝`, state.Title, float64(state.Size)/(1024*1024))
 			replyMessage(client, v, infoMsg)
 			return
 		}
 	}
 
+	// یوٹیوب سرچ انتخاب
 	if results, exists := ytCache[senderID]; exists {
 		var idx int
 		fmt.Sscanf(bodyClean, "%d", &idx)
@@ -173,6 +179,7 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		}
 	}
 
+	// یوٹیوب فارمیٹ انتخاب
 	if state, exists := ytDownloadCache[chatID]; exists {
 		if senderID != state.SenderID { return } 
 		if bodyClean == "1" || bodyClean == "2" || bodyClean == "3" {
@@ -186,13 +193,13 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		}
 	}
 
-	// 7. ✅ کمانڈ اور آرگیومنٹس کی ڈیکلریشن (اسی کی وجہ سے ایرر آ رہا تھا)
+	// 7. کمانڈ پارسنگ
 	cmdBody := strings.ToLower(strings.TrimPrefix(bodyClean, prefix))
 	split := strings.Fields(cmdBody)
 	if len(split) == 0 { return }
 	
 	cmd := split[0]
-	args := split[1:] // 👈 اب 'args' یہاں ڈیفائن ہو گیا ہے
+	args := split[1:]
 	fullArgs := strings.Join(args, " ")
 
 	// 8. پرمیشن چیک
@@ -200,8 +207,8 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		return
 	}
 
-	// 9. کنسول لاگنگ
-	fmt.Printf("📩 [BOT: %s] CMD: %s | User: %s | Chat: %s\n", botID, cmd, v.Info.Sender.User, chatID)
+	// 9. کنسول لاگنگ (صرف کمانڈ ایگزیکیوشن پر)
+	fmt.Printf("🚀 [EXEC] Bot: %s | CMD: %s | Chat: %s\n", botID, cmd, chatID)
 
 	// 10. مین کمانڈ سوئچ
 	switch cmd {
@@ -774,49 +781,32 @@ func saveGroupSettings(s *GroupSettings) {
 }
 
 func ConnectNewSession(device *store.Device) {
-	botID := getCleanID(device.ID.User)	
-	// ConnectNewSession کے اندر
-    //botID := getCleanID(device.ID.User)
-    prefixMutex.Lock()
-    botPrefixes[botID] = "." // ڈیفالٹ پریفکس
-    prefixMutex.Unlock()
-    // ConnectNewSession کے اندر جہاں بوٹ آئی ڈی ملتی ہے:
-    prefixFromDB := fetchPrefixFromMongo(botID) 
-    botPrefixes[botID] = prefixFromDB
-    // ConnectNewSession کے اندر جہاں بوٹ آئی ڈی ملتی ہے:
-    botPrefix := fetchPrefixFromMongo(botID)
-    prefixCache.Store(botID, botPrefix)
-    // ConnectNewSession کے اندر:
-    cleanID := getCleanID(device.ID.User)
-    botCleanIDCache[device.ID.User] = cleanID // میموری میں محفوظ
+	// ⚡ اسٹارٹ اپ پر ہی آئی ڈی کلین کر کے میموری میں رکھ لیں
+	botID := getCleanID(device.ID.User)
+	
+	// پریفکس لوڈ کریں اور کیش میں ڈالیں
+	p := fetchPrefixFromMongo(botID)
+	prefixMutex.Lock()
+	botPrefixes[botID] = p
+	prefixMutex.Unlock()
+	
+	// آئی ڈی کیش کریں
+	botCleanIDCache[device.ID.User] = botID 
 
-	// 🛡️ ڈپلیکیٹ چیک: اگر پہلے سے لسٹ میں ہے تو واپس چلے جاؤ
+	// باقی کنکشن لاجک (WhatsMeow Connection)
 	clientsMutex.RLock()
 	_, exists := activeClients[botID]
 	clientsMutex.RUnlock()
-	if exists {
-		fmt.Printf("⚠️ [MULTI-BOT] Bot %s is already connected. Skipping...\n", botID)
-		return
-	}
+	if exists { return }
 
-	clientLog := waLog.Stdout("Client", "ERROR", true) // لاگز کم کر دیے تاکہ کریش نہ ہو
-	client := whatsmeow.NewClient(device, clientLog)
-	
-	client.AddEventHandler(func(evt interface{}) {
-		handler(client, evt)
-	})
+	client := whatsmeow.NewClient(device, waLog.Stdout("Client", "ERROR", true))
+	client.AddEventHandler(func(evt interface{}) { handler(client, evt) })
 
-	err := client.Connect()
-	if err != nil {
-		fmt.Printf("❌ [MULTI-BOT] نمبر %s کنیکٹ نہیں ہو سکا: %v\n", botID, err)
-		return
-	}
+	if err := client.Connect(); err != nil { return }
 
 	clientsMutex.Lock()
 	activeClients[botID] = client
 	clientsMutex.Unlock()
-
-	fmt.Printf("\n✅ [CONNECTED] Bot: %s | LID: %s\n", botID, getCleanID(device.LID.String()))
 }
 
 
