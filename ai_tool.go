@@ -36,21 +36,75 @@ func sendToolCard(client *whatsmeow.Client, v *events.Message, title, tool, info
 // 1. 🧠 AI BRAIN (.ai) - Real Gemini/DeepSeek Logic
 func handleAI(client *whatsmeow.Client, v *events.Message, query string) {
 	if query == "" {
-		replyMessage(client, v, "⚠️ Please provide a prompt.\nExample: .ai Write a Go function")
+		replyMessage(client, v, "⚠️ *Impossible AI:* Please provide a prompt.\nExample: .ai Write a poem about coding")
 		return
 	}
 	react(client, v.Info.Chat, v.Info.ID, "🧠")
-	sendToolCard(client, v, "Impossible AI", "Neural-Engine", "🧠 Processing with 32GB Brain...")
+	sendToolCard(client, v, "Neural Core", "GPT-4o / Llama-3", "🧠 Computing complex vectors...")
 
-	// لائیو اے پی آئی کال (ہم یہاں ایک اوپن سورس اے پی آئی یوز کر رہے ہیں جو ریئل ٹائم جواب دیتی ہے)
-	apiUrl := "https://api.simsimi.net/v2/?text=" + url.QueryEscape(query) + "&lc=en"
-	var r struct { Success string `json:"success"` }
-	getJson(apiUrl, &r)
+	// 🚀 Pollinations AI Engine - No API Key needed, High-End Response
+	// ہم یہاں 'system' پرامپٹ بھی دے رہے ہیں تاکہ یہ آپ کے بوٹ کے نام سے جواب دے
+	encodedPrompt := url.QueryEscape("You are Impossible AI, a highly advanced and helpful assistant. Your response should be professional. User prompt: " + query)
+	apiUrl := "https://text.pollinations.ai/" + encodedPrompt + "?model=openai&seed=42"
 
-	res := r.Success
-	if res == "" { res = "🤖 *AI Response:* \nI am currently optimizing my neural nodes. Please try again in a moment." }
+	// ڈیٹا فیچ کرنا
+	resp, err := http.Get(apiUrl)
+	if err != nil {
+		replyMessage(client, v, "❌ Engine timeout. Neural nodes are currently congested.")
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	res := string(body)
+
+	if res == "" {
+		res = "🤖 *AI Response:* \nMy neural circuits are currently undergoing optimization. Try again."
+	}
 	
-	replyMessage(client, v, "🤖 *Impossible AI:* \n\n"+res)
+	replyMessage(client, v, "🤖 *IMPOSSIBLE AI:* \n\n"+res)
+	react(client, v.Info.Chat, v.Info.ID, "✅")
+}
+
+func handleImagine(client *whatsmeow.Client, v *events.Message, prompt string) {
+	if prompt == "" {
+		replyMessage(client, v, "⚠️ Please provide an image description.\nExample: .imagine a futuristic city in Pakistan")
+		return
+	}
+	react(client, v.Info.Chat, v.Info.ID, "🎨")
+	sendToolCard(client, v, "Flux Engine", "Stable-Diffusion XL", "🎨 Rendering HD Visuals...")
+
+	// 🖼️ Image Generation API
+	imageUrl := fmt.Sprintf("https://image.pollinations.ai/prompt/%s?width=1024&height=1024&nologo=true", url.QueryEscape(prompt))
+	
+	// تصویر ڈاؤن لوڈ کرنا
+	resp, err := http.Get(imageUrl)
+	if err != nil {
+		replyMessage(client, v, "❌ Graphics engine failure.")
+		return
+	}
+	defer resp.Body.Close()
+	
+	imgData, _ := io.ReadAll(resp.Body)
+
+	// واٹس ایپ پر تصویر بھیجنا
+	up, err := client.Upload(context.Background(), imgData, whatsmeow.MediaImage)
+	if err != nil { return }
+
+	finalMsg := &waProto.Message{
+		ImageMessage: &waProto.ImageMessage{
+			URL:        proto.String(up.URL),
+			DirectPath: proto.String(up.DirectPath),
+			MediaKey:   up.MediaKey,
+			Mimetype:   proto.String("image/jpeg"),
+			Caption:    proto.String("✨ *Impossible AI Art:* " + prompt),
+			FileSHA256: up.FileSHA256,
+			FileEncSHA256: up.FileEncSHA256,
+		},
+	}
+
+	client.SendMessage(context.Background(), v.Info.Chat, finalMsg)
+	react(client, v.Info.Chat, v.Info.ID, "✅")
 }
 
 // 2. 🖥️ LIVE SERVER STATS (.stats) - No Fake Data
@@ -141,7 +195,7 @@ func handleScreenshot(client *whatsmeow.Client, v *events.Message, targetUrl str
 	sendToolCard(client, v, "Web Capture", "Headless-Browser", "🌐 Rendering: "+targetUrl)
 
 	// لائیو اسکرین شاٹ اے پی آئی
-	ssUrl := "https://api.screenshotmachine.com/?key=a2c0da&dimension=1024x768&url=" + url.QueryEscape(targetUrl)
+	ssUrl := "https://api.screenshotmachine.com/?key=54be93&dimension=1290x2796&url=" + url.QueryEscape(targetUrl)
 	
 	resp, _ := http.Get(ssUrl)
 	data, _ := io.ReadAll(resp.Body)
@@ -199,16 +253,60 @@ func handleKwai(client *whatsmeow.Client, v *events.Message, url string) {
 
 // 🔍 Google Search (Real Results Formatting)
 func handleGoogle(client *whatsmeow.Client, v *events.Message, query string) {
-	if query == "" { replyMessage(client, v, "⚠️ What do you want to search?"); return }
+	if query == "" {
+		replyMessage(client, v, "⚠️ *Usage:* .google [query]")
+		return
+	}
 	react(client, v.Info.Chat, v.Info.ID, "🔍")
+	replyMessage(client, v, "📡 *Impossible Engine:* Scouring the web for '"+query+"'...")
+
+	// 🚀 DuckDuckGo Search Logic (Stable & Free)
+	// ہم HTML سرچ کو پارس کریں گے جو بہت سادہ ہے
+	searchUrl := "https://duckduckgo.com/html/?q=" + url.QueryEscape(query)
 	
-	// خوبصورت سرچ لک
-	searchMsg := fmt.Sprintf("🧐 *Impossible Google Search*\n\n🔎 *Query:* %s\n\n", query)
-	searchMsg += "1️⃣ *Top Result:* https://www.google.com/search?q=" + url.QueryEscape(query) + "\n"
-	searchMsg += "2️⃣ *Images:* https://www.google.com/search?tbm=isch&q=" + url.QueryEscape(query) + "\n\n"
-	searchMsg += "✨ _Results fetched via High-Speed._"
+	resp, err := http.Get(searchUrl)
+	if err != nil {
+		replyMessage(client, v, "❌ Search engine failed to respond.")
+		return
+	}
+	defer resp.Body.Close()
+
+	// رزلٹ کو ریڈ کرنا
+	body, _ := io.ReadAll(resp.Body)
+	htmlContent := string(body)
+
+	// ✨ پریمیم کارڈ ڈیزائن
+	menuText := "╭─── 🧐 *IMPOSSIBLE SEARCH* ───╮\n│\n"
 	
-	replyMessage(client, v, searchMsg)
+	// سادہ اسپلٹ لاجک سے ٹاپ لنکس نکالنا (بغیر بھاری لائبریری کے)
+	links := strings.Split(htmlContent, "class=\"result__a\" href=\"")
+	
+	count := 0
+	for i := 1; i < len(links); i++ {
+		if count >= 5 { break }
+		
+		// لنک اور ٹائٹل الگ کرنا
+		linkPart := strings.Split(links[i], "\"")
+		if len(linkPart) < 2 { continue }
+		actualLink := linkPart[0]
+		
+		titlePart := strings.Split(links[i], ">")
+		if len(titlePart) < 2 { continue }
+		actualTitle := strings.Split(titlePart[1], "</a")[0]
+
+		// کارڈ میں ڈیٹا ڈالنا
+		menuText += fmt.Sprintf("📍 *[%d]* %s\n│ 🔗 %s\n│ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n", count+1, actualTitle, actualLink)
+		count++
+	}
+
+	if count == 0 {
+		replyMessage(client, v, "❌ No results found. Try a different query.")
+		return
+	}
+
+	menuText += "│\n╰────────────────────╯"
+	replyMessage(client, v, menuText)
+	react(client, v.Info.Chat, v.Info.ID, "✅")
 }
 
 // 🎙️ Audio to PTT (Real Voice Note Logic)

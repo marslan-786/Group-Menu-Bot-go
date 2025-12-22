@@ -327,8 +327,10 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		handleSpeedTest(client, v)
 	case "ss", "screenshot":
 		handleScreenshot(client, v, fullArgs)
-	case "ai", "chat", "impossible":
+    case "ai", "ask", "gpt":
 		handleAI(client, v, fullArgs)
+	case "imagine", "img", "draw":
+		handleImagine(client, v, fullArgs)
 	case "google", "search":
 		handleGoogle(client, v, fullArgs)
 	case "weather":
@@ -587,19 +589,22 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 ║ │ 🔸 *%sstatusreact* - React Status
 ║ ╰────────────────────────╯
 ║                             
-║ ╭────── PREVIEW TOOLS ─────╮
-║ │ 🔸 *%sstats* - ✅ Server Dashboard
-║ │ 🔸 *%sspeed* - ✅ Internet Speed
+║ ╭────── AI & TOOLS ─────────╮
+║ │ 🔸 *%sstats* - Server Dashboard
+║ │ 🔸 *%sspeed* - Internet Speed
 ║ │ 🔸 *%sss* - Web Screenshot
 ║ │ 🔸 *%sai* - Artificial Intelligence
-║ │ 🔸 *%sgoogle* - ✅ Fast Search
-║ │ 🔸 *%sweather* - ✅ Climate Info
+║ │ 🔸 *%sask* - Ask Questions
+║ │ 🔸 *%sgpt* - GPT 4o Model
+║ │ 🔸 *%simg* - Image Generator 
+║ │ 🔸 *%sgoogle* - Fast Search
+║ │ 🔸 *%sweather* - Climate Info
 ║ │ 🔸 *%sremini* - HD Image Upscaler
 ║ │ 🔸 *%sremovebg* - Background Eraser
 ║ │ 🔸 *%sfancy* - Stylish Text
-║ │ 🔸 *%stoptt* - ✅ Convert to Audio
-║ │ 🔸 *%svv* - ✅ ViewOnce Bypass
-║ │ 🔸 *%ssticker* - ✅ Image to Sticker
+║ │ 🔸 *%stoptt* - Convert to Audio
+║ │ 🔸 *%svv* - ViewOnce Bypass
+║ │ 🔸 *%ssticker* - Image to Sticker
 ║ │ 🔸 *%stoimg* - Sticker to Image
 ║ │ 🔸 *%sgit* - GitHub Downloader
 ║ │ 🔸 *%sarchive* - Internet Archive
@@ -621,7 +626,7 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 		// سیٹنگز (12)
 		p, p, p, p, p, p, p, p, p, p, p, p,
 		// ٹولز (16)
-		p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p)
+		p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p)
 
 	sendReplyMessage(client, v, menu)
 }
