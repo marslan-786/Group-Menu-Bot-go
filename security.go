@@ -377,6 +377,7 @@ func onResponse(client *whatsmeow.Client, v *events.Message, choice string) {
 }
 
 func startSecuritySetup(client *whatsmeow.Client, v *events.Message, secType string) {
+	// 1️⃣ گروپ اونلی کارڈ (برقرار ہے)
 	if !v.Info.IsGroup {
 		msg := `╔════════════════╗
 ║ ❌ GROUP ONLY
@@ -387,6 +388,7 @@ func startSecuritySetup(client *whatsmeow.Client, v *events.Message, secType str
 		return
 	}
 
+	// 2️⃣ ایڈمن چیک (برقرار ہے)
 	isAdmin := false
 	groupInfo, err := client.GetGroupInfo(context.Background(), v.Info.Chat)
 	if err == nil {
@@ -398,11 +400,7 @@ func startSecuritySetup(client *whatsmeow.Client, v *events.Message, secType str
 		}
 	}
 	
-	if !isAdmin && isOwner(client, v.Info.Sender) {
-		isAdmin = true
-	}
-
-	if !isAdmin {
+	if !isAdmin && !isOwner(client, v.Info.Sender) {
 		msg := `╔════════════════╗
 ║ 👮 ADMIN ONLY
 ╠════════════════╣
@@ -418,6 +416,10 @@ func startSecuritySetup(client *whatsmeow.Client, v *events.Message, secType str
 	groupID := v.Info.Chat.String()
 	title := strings.ToUpper(secType)
 
+	// 🔑 یونیک کی (Key) بنانا تاکہ ملٹی بوٹ میں سیشن مکس نہ ہو
+	mapKey := fmt.Sprintf("%s:%s", botLID, senderStr)
+
+	// 3️⃣ مین سیٹ اپ کارڈ
 	msgText := fmt.Sprintf(`╔════════════════╗
 ║ 🛡️ %s (1/2)
 ╠════════════════╣
@@ -431,44 +433,53 @@ func startSecuritySetup(client *whatsmeow.Client, v *events.Message, secType str
 ║ ⏱️ Timeout: 2 min
 ╚════════════════╝`, title, groupID[:10]+"...")
 
-	// ✅ میسج بھیجنا اور اس کی ID محفوظ کرنا
+	// میسج بھیجنا اور ID لینا تاکہ صرف اسی کا ریپلائی سنا جائے
 	resp, _ := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{
 			Text: proto.String(msgText),
 		},
 	})
 
-	setupMap[senderStr] = &SetupState{
+	// ڈیٹا کو 'mapKey' کے ساتھ محفوظ کریں
+	setupMap[mapKey] = &SetupState{
 		Type:     secType,
 		Stage:    1,
 		GroupID:  groupID,
 		User:     senderStr,
 		BotLID:   botLID,
-		BotMsgID: resp.ID, // یہاں آئی ڈی سیو ہوگئی
+		BotMsgID: resp.ID,
 	}
 
+	// آٹو کلین اپ (صرف اسی mapKey کو ڈیلیٹ کرے گا)
 	go func() {
 		time.Sleep(2 * time.Minute)
-		delete(setupMap, senderStr)
+		delete(setupMap, mapKey)
 	}()
 }
 
-func handleSetupResponse(client *whatsmeow.Client, v *events.Message, state *SetupState) {
-	if v.Info.Sender.String() != state.User {
-		return
+func handleSetupResponse(client *whatsmeow.Client, v *events.Message) {
+	botLID := getBotLIDFromDB(client)
+	senderID := v.Info.Sender.String()
+	
+	// 🔑 وہی مخصوص چابی بنائیں جو اسٹارٹ کرتے وقت بنائی تھی
+	mapKey := fmt.Sprintf("%s:%s", botLID, senderID)
+	
+	// ڈیٹا نکالیں
+	state, exists := setupMap[mapKey]
+	if !exists {
+		return // یہ اس بوٹ کا سیشن نہیں ہے
 	}
 
-	// ✅ یہاں 'GetStanzaID' (بڑا D) استعمال کیا گیا ہے
+	// 🛑 ریپلائی چیک: کیا بوٹ کے اپنے میسج کو ریپلائی کیا گیا ہے؟
 	extMsg := v.Message.GetExtendedTextMessage()
 	if extMsg == nil || extMsg.ContextInfo == nil || extMsg.ContextInfo.GetStanzaID() != state.BotMsgID {
 		return 
 	}
 
 	txt := strings.TrimSpace(getText(v.Message))
-    // باقی کوڈ وہی رہے گا...
-	// یہاں سے آپ کی اپنی لاجک شروع...
 	s := getGroupSettings(state.GroupID)
 
+	// --- اسٹیج 1: ایڈمن بائی پاس ---
 	if state.Stage == 1 {
 		if txt == "1" {
 			s.AntilinkAdmin = true
@@ -489,7 +500,7 @@ func handleSetupResponse(client *whatsmeow.Client, v *events.Message, state *Set
 ║ 3️⃣ DELETE + WARN
 ╚════════════════╝`, strings.ToUpper(state.Type))
 
-		// ✅ اگلے اسٹیج کے لئے بھی میسج آئی ڈی اپڈیٹ کریں
+		// اگلے کارڈ کی ID سیو کریں تاکہ اسٹیج 2 کا جواب ٹریک ہو سکے
 		resp, _ := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text: proto.String(nextMsg),
@@ -499,8 +510,8 @@ func handleSetupResponse(client *whatsmeow.Client, v *events.Message, state *Set
 		return
 	}
 
+	// --- اسٹیج 2: فائنل ایکشن ---
 	if state.Stage == 2 {
-		// وہی آپ کی پرانی لاجک (Action Handling)...
 		var actionText string
 		switch txt {
 		case "1":
@@ -517,7 +528,7 @@ func handleSetupResponse(client *whatsmeow.Client, v *events.Message, state *Set
 			return
 		}
 
-		// فیچر آن کرنا اور سیو کرنا
+		// فیچر آن کریں
 		switch state.Type {
 		case "antilink": s.Antilink = true
 		case "antipic": s.AntiPic = true
@@ -526,10 +537,11 @@ func handleSetupResponse(client *whatsmeow.Client, v *events.Message, state *Set
 		}
 
 		saveGroupSettings(s)
-		delete(setupMap, state.User)
+		
+		// ✅ فائنل کلین اپ: mapKey استعمال کریں
+		delete(setupMap, mapKey)
 
-		adminAllow := "YES ✅"
-		if !s.AntilinkAdmin { adminAllow = "NO ❌" }
+		adminAllow := "YES ✅"; if !s.AntilinkAdmin { adminAllow = "NO ❌" }
 
 		finalMsg := fmt.Sprintf(`╔════════════════╗
 ║ ✅ %s ENABLED

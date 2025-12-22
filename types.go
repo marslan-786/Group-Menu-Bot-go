@@ -42,13 +42,14 @@ type BotData struct {
 	StatusTargets []string `bson:"status_targets" json:"status_targets"`
 }
 
+// SetupState بوٹ کے سیکیورٹی سیٹ اپ کے سیشن کو سنبھالتا ہے
 type SetupState struct {
-	Type    string
-	Stage   int
-	GroupID string
-	User    string
-	BotLID  string
-	BotMsgID string
+	Type     string // اینٹی لنک، اینٹی پک، وغیرہ (Feature Name)
+	Stage    int    // پہلا اسٹیج ہے یا دوسرا (Current Step)
+	GroupID  string // کس گروپ میں سیٹ اپ ہو رہا ہے
+	User     string // کون سا ایڈمن سیٹ اپ کر رہا ہے
+	BotLID   string // کس بوٹ کے ذریعے سیٹ اپ ہو رہا ہے (Multi-Bot Fix)
+	BotMsgID string // بوٹ کے بھیجے گئے کارڈ کی یونیک آئی ڈی (Reply Check)
 }
 
 // --- 🌍 GLOBAL VARIABLES ---
