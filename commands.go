@@ -62,6 +62,7 @@ func isKnownCommand(text string) bool {
 }
 
 func processMessage(client *whatsmeow.Client, v *events.Message) {
+	// 1️⃣ بنیادی معلومات نکالیں (ID اور پریفکس)
 	rawBotID := client.Store.ID.User
 	botID := botCleanIDCache[rawBotID]
 	if botID == "" { botID = getCleanID(rawBotID) } 
@@ -72,14 +73,14 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 	bodyClean := strings.TrimSpace(bodyRaw)
 	senderID := v.Info.Sender.User
 	chatID := v.Info.Chat.String()
+	isGroup := v.Info.IsGroup // ✅ یہ پہلے ڈیفائن کر دیا (ایرر ختم)
 
-	// 🛡️ 1. سب سے پہلے سیکیورٹی چیک (لنک، تصویر، ویڈیو وغیرہ)
-	// یہ فلٹر سے اوپر ہونا چاہیے تاکہ ہر میسج اسکین ہو سکے
-	if v.Info.IsGroup {
+	// 🛡️ 2️⃣ سیکیورٹی چیک (لنک ڈیلیٹ کرنے کے لیے اسے سب سے اوپر رکھا ہے)
+	if isGroup {
 		go checkSecurity(client, v)
 	}
 
-	// ⚡ 2. اسٹیج/سیٹ اپ چیک کریں (Message ID کی بنیاد پر)
+	// ⚡ 3️⃣ اسٹیج/سیٹ اپ اور ڈاؤنلوڈر کیش چیک کریں
 	isSetup := false
 	extMsg := v.Message.GetExtendedTextMessage()
 	if extMsg != nil && extMsg.ContextInfo != nil {
@@ -89,17 +90,22 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		}
 	}
 
-	// 🛠️ 3. مین فلٹر (اب یہ صرف کمانڈز کے لیے کام کرے گا)
-	// اگر یہ کمانڈ نہیں ہے، سیشن نہیں ہے اور اسٹیٹس براڈکاسٹ نہیں ہے، تو اب ریٹرن ہو
-	if !strings.HasPrefix(bodyClean, prefix) && !isSetup && chatID != "status@broadcast" {
+	// ڈاؤنلوڈر ویریبلز ڈیفائن کریں (ایرر ختم کرنے کے لیے)
+	_, isTT := ttCache[senderID]
+	_, isYTS := ytCache[senderID]
+	_, isYTSelect := ytDownloadCache[chatID]
+
+	// 🛠️ 4️⃣ مین فلٹر (اگر کمانڈ نہیں ہے اور نہ ہی کوئی سیشن، تو یہیں رک جاؤ)
+	if !strings.HasPrefix(bodyClean, prefix) && !isSetup && !isTT && !isYTS && !isYTSelect && chatID != "status@broadcast" {
 		return 
 	}
 
-	// 4. اگر سیٹ اپ سیشن ہے تو ہینڈلر کو بھیجیں
+	// 5️⃣ سیکیورٹی سیٹ اپ رسپانس ہینڈلر
 	if isSetup {
 		handleSetupResponse(client, v)
 		return
 	}
+
     // ... باقی سارا کوڈ (Status, Security check, Commands) ویسے ہی رہنے دیں
 
 	// 3. اسٹیٹس براڈکاسٹ (Auto Status View/React)
