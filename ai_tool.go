@@ -39,43 +39,53 @@ func sendToolCard(client *whatsmeow.Client, v *events.Message, title, tool, info
 // 1. 🧠 AI BRAIN (.ai) - Real Gemini/DeepSeek Logic
 func handleAI(client *whatsmeow.Client, v *events.Message, query string, cmd string) {
 	if query == "" {
-		replyMessage(client, v, "⚠️ Please provide a prompt.\nExample: .ai Write a Go function")
+		replyMessage(client, v, "⚠️ Please provide a prompt.")
 		return
 	}
-	
-	// 🧠 ری ایکشن (تاکہ یوزر کو پتہ چلے بوٹ کام کر رہا ہے)
 	react(client, v.Info.Chat, v.Info.ID, "🧠")
 
-	// 🕵️ نام کا فیصلہ (Identity Logic)
+	// 🕵️ پہچان سیٹ کریں
 	aiName := "Impossible AI"
-	if strings.ToLower(cmd) == "gpt" {
-		aiName = "GPT"
+	if strings.ToLower(cmd) == "gpt" { aiName = "GPT-4" }
+	systemInstructions := fmt.Sprintf("You are %s. Respond in the user's language. Be brief and professional.", aiName)
+
+	// 🚀 ماڈلز کی لسٹ (ترجیحی بنیاد پر)
+	// ہم 'unity' کو نکال رہے ہیں کیونکہ وہ گالیاں دے رہا تھا 😂
+	models := []string{"openai", "mistral"}
+	
+	var finalResponse string
+	success := false
+
+	for _, model := range models {
+		apiUrl := fmt.Sprintf("https://text.pollinations.ai/%s?model=%s&system=%s", 
+			url.QueryEscape(query), model, url.QueryEscape(systemInstructions))
+
+		resp, err := http.Get(apiUrl)
+		if err != nil { continue } // اگر کنکشن فیل ہو تو اگلے ماڈل پر جاؤ
+		
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		res := string(body)
+
+		// 🔍 چیک کریں: کیا جواب JSON ہے یا سادہ ٹیکسٹ؟
+		// اگر جواب میں {"error" یا {"status" ہے تو اس کا مطلب ہے وہ ایرر ہے
+		if strings.HasPrefix(res, "{") && strings.Contains(res, "error") {
+			fmt.Printf("⚠️ [AI DEBUG] Model %s failed, trying next...\n", model)
+			continue 
+		}
+
+		// اگر یہاں پہنچ گئے تو مطلب ٹیکسٹ صحیح مل گیا ہے
+		finalResponse = res
+		success = true
+		break
 	}
 
-	// 🎯 سسٹم پرامپٹ (زبان اور پہچان کی سختی سے ہدایت)
-	systemInstructions := fmt.Sprintf("You are %s, an advanced AI. Instructions: 1. Always respond in the same language as the user's query (Urdu/English/etc). 2. Be professional and brief. 3. Your name is %s.", aiName, aiName)
-	
-	// 🚀 Pollinations AI Engine (Fast & Direct)
-	encodedPrompt := url.QueryEscape(systemInstructions + " User prompt: " + query)
-	apiUrl := "https://text.pollinations.ai/" + encodedPrompt + "?model=llama&seed=" + fmt.Sprintf("%d", time.Now().UnixNano())
-
-	// ڈیٹا فیچ کرنا
-	resp, err := http.Get(apiUrl)
-	if err != nil {
-		replyMessage(client, v, "❌ Engine timeout. Neural nodes are currently congested.")
+	if !success {
+		replyMessage(client, v, "🤖 *Impossible AI:* All neural nodes are currently congested. Please try later.")
 		return
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	res := string(body)
-
-	if res == "" {
-		res = "🤖 *AI Error:* My neural circuits are undergoing optimization. Try again."
-	}
 	
-	// 📤 ڈائریکٹ رسپانس (بغیر کسی کارڈ کے)
-	replyMessage(client, v, res)
+	replyMessage(client, v, finalResponse)
 	react(client, v.Info.Chat, v.Info.ID, "✅")
 }
 
@@ -523,77 +533,58 @@ func handleToPTT(client *whatsmeow.Client, v *events.Message) {
 func handleRemoveBG(client *whatsmeow.Client, v *events.Message) {
 	extMsg := v.Message.GetExtendedTextMessage()
 	if extMsg == nil || extMsg.ContextInfo == nil || extMsg.ContextInfo.QuotedMessage == nil {
-		replyMessage(client, v, "⚠️ Please reply to an image with *.removebg*")
+		replyMessage(client, v, "⚠️ Please reply to an image.")
 		return
 	}
 
-	quotedMsg := extMsg.ContextInfo.QuotedMessage
-	imgMsg := quotedMsg.GetImageMessage()
+	imgMsg := extMsg.ContextInfo.QuotedMessage.GetImageMessage()
 	if imgMsg == nil {
-		replyMessage(client, v, "⚠️ The replied message is not an image.")
+		replyMessage(client, v, "⚠️ Not an image.")
 		return
 	}
 
 	react(client, v.Info.Chat, v.Info.ID, "✂️")
+	replyMessage(client, v, "🪄 *Impossible Local Engine:* Processing...")
 
-	// 🛠️ FIX: Download میں context.Background() کا اضافہ کیا گیا ہے
 	imgData, err := client.Download(context.Background(), imgMsg)
-	if err != nil {
-		replyMessage(client, v, "❌ Failed to download image.")
-		return
-	}
-
-	// ... باقی rembg (local engine) والی لاجک وہی رہے گی ...
-
-	// 3️⃣ عارضی فائلز بنائیں
-	inputPath := fmt.Sprintf("input_%d.jpg", time.Now().UnixNano())
-	outputPath := fmt.Sprintf("output_%d.png", time.Now().UnixNano())
-
-	// ان پٹ فائل محفوظ کریں
-	err = os.WriteFile(inputPath, imgData, 0644)
 	if err != nil { return }
 
-	// 4️⃣ 🚀 REMBG لائبریری چلائیں (The Magic Moment)
-	// یہ کمانڈ آپ کے سرور پر بیک گراؤنڈ ریموو کرے گی
+	inputPath := fmt.Sprintf("input_%d.jpg", time.Now().UnixNano())
+	outputPath := fmt.Sprintf("output_%d.png", time.Now().UnixNano())
+	os.WriteFile(inputPath, imgData, 0644)
+
+	// 🛠️ ڈیبگنگ کمانڈ: ہم پائتھن کے ذریعے رن کر رہے ہیں
 	cmd := exec.Command("python3", "-m", "rembg", "i", inputPath, outputPath)
 	output, err := cmd.CombinedOutput()
+	
 	if err != nil {
-		fmt.Printf("❌ Rembg Error: %v\nLog: %s\n", err, string(output))
-		replyMessage(client, v, "❌ Local engine failed. Ensure rembg is installed in Docker.")
+		// ✅ اب یہ آپ کو بتائے گا کہ اصل میں مسئلہ کیا ہے
+		replyMessage(client, v, fmt.Sprintf("❌ *Engine Error:* \n%s", string(output)))
+		os.Remove(inputPath)
 		return
 	}
 
-	// 5️⃣ رزلٹ فائل پڑھیں
 	finalData, err := os.ReadFile(outputPath)
 	if err != nil { return }
 
-	// صفائی (عارضی فائلز ڈیلیٹ کریں)
 	defer os.Remove(inputPath)
 	defer os.Remove(outputPath)
 
-	// 6️⃣ واٹس ایپ پر اپلوڈ اور سینڈ
 	up, err := client.Upload(context.Background(), finalData, whatsmeow.MediaImage)
-	if err != nil {
-		replyMessage(client, v, "❌ WhatsApp upload failed.")
-		return
-	}
+	if err != nil { return }
 
-	// 📤 فائنل میسج ڈیلیوری
-	finalMsg := &waProto.Message{
+	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		ImageMessage: &waProto.ImageMessage{
 			URL:           proto.String(up.URL),
 			DirectPath:    proto.String(up.DirectPath),
 			MediaKey:      up.MediaKey,
 			Mimetype:      proto.String("image/png"),
-			Caption:       proto.String("✅ *Background Removed Locally*"),
+			Caption:       proto.String("✅ *Background Removed*"),
 			FileSHA256:    up.FileSHA256,
 			FileEncSHA256: up.FileEncSHA256,
-			FileLength:    proto.Uint64(uint64(len(finalData))),
+			FileLength:    proto.Uint64(uint64(len(finalData))), // سائز دینا لازمی ہے
 		},
-	}
-
-	client.SendMessage(context.Background(), v.Info.Chat, finalMsg)
-	react(client, v.Info.Chat, v.Info.ID, "✅")
+	})
 }
 
 // 🎮 STEAM (.steam) - NEW & FILLED
