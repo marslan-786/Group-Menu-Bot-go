@@ -342,24 +342,115 @@ func handleGithub(client *whatsmeow.Client, v *events.Message, urlStr string) {
 	up, err := client.Upload(context.Background(), fileData, whatsmeow.MediaDocument)
 	if err != nil { return }
 
-	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		DocumentMessage: &waProto.DocumentMessage{
-			URL:           proto.String(up.URL),
-			DirectPath:    proto.String(up.DirectPath),
-			MediaKey:      up.MediaKey,
-			Mimetype:      proto.String("application/zip"),
-			FileName:      proto.String("Impossible_Repo.zip"),
-			FileLength:    proto.Uint64(uint64(len(fileData))),
-			FileSHA256:    up.FileSHA256,
-			FileEncSHA256: up.FileEncSHA256,
-		},
-	})
+	// ✅ فکسڈ میسج (MediaType کو IMAGE کر دیا ہے)
+		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+			DocumentMessage: &waProto.DocumentMessage{
+				URL:           proto.String(up.URL),
+				DirectPath:    proto.String(up.DirectPath),
+				MediaKey:      up.MediaKey,
+				Mimetype:      proto.String("application/octet-stream"),
+				Title:         proto.String(fileName),
+				FileName:      proto.String(fileName),
+				FileLength:    proto.Uint64(uint64(len(fileData))),
+				FileSHA256:    up.FileSHA256,
+				FileEncSHA256: up.FileEncSHA256,
+				ContextInfo: &waProto.ContextInfo{
+					ExternalAdReply: &waProto.ContextInfo_ExternalAdReplyInfo{
+						Title:     proto.String("Impossible Mega Engine"),
+						Body:      proto.String("File: " + fileName),
+						SourceURL: proto.String(urlStr),
+						MediaType: waProto.ContextInfo_ExternalAdReplyInfo_IMAGE.Enum(), // 🛠️ فکس: یہاں IMAGE ہی چلے گا
+					},
+				},
+			},
+		})
 	react(client, v.Info.Chat, v.Info.ID, "✅")
 }
 
 func handleArchive(client *whatsmeow.Client, v *events.Message, urlStr string) {
-	sendPremiumCard(client, v, "Web Archive", "Archive.org", "🏛️ Fetching Wayback Machine Data...")
-	go downloadAndSend(client, v, urlStr, "video")
+	if urlStr == "" { return }
+	
+	urlStr = strings.TrimSpace(urlStr)
+	react(client, v.Info.Chat, v.Info.ID, "🏛️")
+	sendPremiumCard(client, v, "Archive Downloader", "Wayback-Machine", "🏛️ Accessing historical servers...")
+
+	go func() {
+		// 1️⃣ فائل کی معلومات حاصل کریں (Headers چیک کریں)
+		clientHttp := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return nil // ری ڈائریکٹس کو فالو کریں
+			},
+		}
+
+		req, _ := http.NewRequest("GET", urlStr, nil)
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+		
+		resp, err := clientHttp.Do(req)
+		if err != nil || resp.StatusCode != 200 {
+			replyMessage(client, v, "❌ *Archive Error:* Could not reach the file. Link might be dead.")
+			return
+		}
+		defer resp.Body.Close()
+
+		// 2️⃣ فائل کا نام نکالیں (URL سے یا Header سے)
+		fileName := "archive_file"
+		if disp := resp.Header.Get("Content-Disposition"); strings.Contains(disp, "filename=") {
+			fileName = strings.Split(disp, "filename=")[1]
+			fileName = strings.Trim(fileName, ` "`)
+		} else {
+			// یو آر ایل کے آخری حصے سے نام نکالیں
+			parts := strings.Split(urlStr, "/")
+			fileName = parts[len(parts)-1]
+			if !strings.Contains(fileName, ".") { fileName += ".bin" }
+		}
+
+		// 3️⃣ 🚀 ڈاؤن لوڈنگ (بفر کے ساتھ تاکہ ریم پر بوجھ نہ پڑے)
+		tempFile := fmt.Sprintf("temp_arc_%d_%s", time.Now().UnixNano(), fileName)
+		out, _ := os.Create(tempFile)
+		_, err = io.Copy(out, resp.Body)
+		out.Close()
+
+		if err != nil {
+			replyMessage(client, v, "❌ *Error:* Download interrupted.")
+			os.Remove(tempFile)
+			return
+		}
+
+		fileData, _ := os.ReadFile(tempFile)
+		defer os.Remove(tempFile)
+
+		// 4️⃣ واٹس ایپ پر اپلوڈ اور سینڈ
+		// ڈاکومنٹ کے طور پر بھیجنا سب سے وی آئی پی طریقہ ہے
+		up, err := client.Upload(context.Background(), fileData, whatsmeow.MediaDocument)
+		if err != nil {
+			replyMessage(client, v, "❌ WhatsApp upload failed.")
+			return
+		}
+
+		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+			DocumentMessage: &waProto.DocumentMessage{
+				URL:           proto.String(up.URL),
+				DirectPath:    proto.String(up.DirectPath),
+				MediaKey:      up.MediaKey,
+				Mimetype:      proto.String(resp.Header.Get("Content-Type")),
+				Title:         proto.String(fileName),
+				FileName:      proto.String(fileName),
+				FileLength:    proto.Uint64(uint64(len(fileData))),
+				FileSHA256:    up.FileSHA256,
+				FileEncSHA256: up.FileEncSHA256,
+				ContextInfo: &waProto.ContextInfo{
+					ExternalAdReply: &waProto.ContextInfo_ExternalAdReplyInfo{
+						Title:     proto.String("Impossible Archive Engine"),
+						Body:      proto.String("Restored from Wayback Machine"),
+						SourceURL: proto.String(urlStr),
+						MediaType: waProto.ContextInfo_ExternalAdReplyInfo_IMAGE.Enum(), // 🛠️ فکس: یہاں بھی IMAGE کر دیں
+					},
+				},
+			},
+		})
+		
+		react(client, v.Info.Chat, v.Info.ID, "✅")
+	}()
 }
 
 // 📺 یوٹیوب سرچ اور مینو (YTS)
