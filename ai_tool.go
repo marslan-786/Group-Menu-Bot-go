@@ -57,7 +57,7 @@ func handleAI(client *whatsmeow.Client, v *events.Message, query string, cmd str
 	
 	// 🚀 Pollinations AI Engine (Fast & Direct)
 	encodedPrompt := url.QueryEscape(systemInstructions + " User prompt: " + query)
-	apiUrl := "https://text.pollinations.ai/" + encodedPrompt + "?model=openai&seed=" + fmt.Sprintf("%d", time.Now().UnixNano())
+	apiUrl := "https://text.pollinations.ai/" + encodedPrompt + "?model=llama&seed=" + fmt.Sprintf("%d", time.Now().UnixNano())
 
 	// ڈیٹا فیچ کرنا
 	resp, err := http.Get(apiUrl)
@@ -81,38 +81,33 @@ func handleAI(client *whatsmeow.Client, v *events.Message, query string, cmd str
 
 func handleImagine(client *whatsmeow.Client, v *events.Message, prompt string) {
 	if prompt == "" {
-		replyMessage(client, v, "⚠️ Please provide an image description.\nExample: .imagine a futuristic city in Pakistan")
+		replyMessage(client, v, "⚠️ Please provide a prompt.")
 		return
 	}
 	react(client, v.Info.Chat, v.Info.ID, "🎨")
-	sendToolCard(client, v, "Flux Engine", "Stable-Diffusion XL", "🎨 Rendering HD Visuals...")
 
-	// 🖼️ Image Generation API
 	imageUrl := fmt.Sprintf("https://image.pollinations.ai/prompt/%s?width=1024&height=1024&nologo=true", url.QueryEscape(prompt))
 	
-	// تصویر ڈاؤن لوڈ کرنا
 	resp, err := http.Get(imageUrl)
-	if err != nil {
-		replyMessage(client, v, "❌ Graphics engine failure.")
-		return
-	}
+	if err != nil { return }
 	defer resp.Body.Close()
 	
 	imgData, _ := io.ReadAll(resp.Body)
 
-	// واٹس ایپ پر تصویر بھیجنا
 	up, err := client.Upload(context.Background(), imgData, whatsmeow.MediaImage)
 	if err != nil { return }
 
+	// ✅ یہاں ہم نے FileLength کا اضافہ کیا ہے
 	finalMsg := &waProto.Message{
 		ImageMessage: &waProto.ImageMessage{
-			URL:        proto.String(up.URL),
-			DirectPath: proto.String(up.DirectPath),
-			MediaKey:   up.MediaKey,
-			Mimetype:   proto.String("image/jpeg"),
-			Caption:    proto.String("✨ *Impossible AI Art:* " + prompt),
-			FileSHA256: up.FileSHA256,
+			URL:           proto.String(up.URL),
+			DirectPath:    proto.String(up.DirectPath),
+			MediaKey:      up.MediaKey,
+			Mimetype:      proto.String("image/jpeg"),
+			Caption:       proto.String("✨ *Impossible AI Art:* " + prompt),
+			FileSHA256:    up.FileSHA256,
 			FileEncSHA256: up.FileEncSHA256,
+			FileLength:    proto.Uint64(uint64(len(imgData))), // یہ لائن لازمی ہے
 		},
 	}
 
@@ -209,6 +204,8 @@ func uploadToTempHost(data []byte, filename string) (string, error) {
 
 	req, _ := http.NewRequest("POST", "https://catbox.moe/user/api.php", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
+	// ✅ اصلی براؤزر بن کر ریکویسٹ بھیجیں تاکہ بلاک نہ ہو
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
 	
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -558,7 +555,7 @@ func handleRemoveBG(client *whatsmeow.Client, v *events.Message) {
 
 	// 4️⃣ 🚀 REMBG لائبریری چلائیں (The Magic Moment)
 	// یہ کمانڈ آپ کے سرور پر بیک گراؤنڈ ریموو کرے گی
-	cmd := exec.Command("rembg", "i", inputPath, outputPath)
+	cmd := exec.Command("python3", "-m", "rembg", "i", inputPath, outputPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("❌ Rembg Error: %v\nLog: %s\n", err, string(output))
