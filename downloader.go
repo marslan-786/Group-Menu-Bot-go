@@ -84,7 +84,7 @@ func downloadAndSend(client *whatsmeow.Client, v *events.Message, ytUrl, mode st
 	
 	fileName := fmt.Sprintf("temp_%d", time.Now().UnixNano())
 	
-	// 🎯 فارمیٹ سیٹ کریں (اگر یوزر نے سلیکٹر سے چنا ہے تو وہ، ورنہ ڈیفالٹ)
+	// 🎯 بہترین فارمیٹ سیٹ کریں (MP4 کو ترجیح دیں لیکن اگر نہ ملے تو جو ملے اٹھا لے)
 	formatArg := "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 	if len(optionalFormat) > 0 && optionalFormat[0] != "" {
 		formatArg = optionalFormat[0]
@@ -93,28 +93,25 @@ func downloadAndSend(client *whatsmeow.Client, v *events.Message, ytUrl, mode st
 	var args []string
 	if mode == "audio" {
 		fileName += ".mp3"
-		// ✅ یہاں 'fullArgs' کو 'ytUrl' سے بدل دیا گیا ہے
-		args = []string{"-f", "bestaudio", "--extract-audio", "--audio-format", "mp3", "-o", fileName, ytUrl}
+		// ✅ یہاں 'ytUrl' استعمال ہوگا
+		args = []string{"--no-playlist", "-f", "bestaudio", "--extract-audio", "--audio-format", "mp3", "-o", fileName, ytUrl}
 	} else {
 		fileName += ".mp4"
-		// ✅ یہاں بھی 'ytUrl' استعمال کیا ہے اور یوزر کا منتخب کردہ فارمیٹ بھی
-		args = []string{"-f", formatArg, "--merge-output-format", "mp4", "-o", fileName, ytUrl}
+		// ✅ یہاں بھی 'ytUrl' استعمال ہوگا
+		args = []string{"--no-playlist", "-f", formatArg, "--merge-output-format", "mp4", "-o", fileName, ytUrl}
 	}
 
-	// 1. سرور پر ڈاؤن لوڈنگ شروع (The Scientist Mode)
+	// 1. ڈاؤن لوڈ شروع
 	cmd := exec.Command("yt-dlp", args...)
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("❌ yt-dlp error: %v\n", err)
-		replyMessage(client, v, "❌ Media processing failed. The link might be broken or too large.")
+		replyMessage(client, v, "❌ Media processing failed. The link might be restricted or too large.")
 		return
 	}
 
-	// 2. فائل پڑھنا اور واٹس ایپ پر اپلوڈ کرنا
+	// 2. فائل چیک کریں اور اپلوڈ کریں
 	fileData, err := os.ReadFile(fileName)
-	if err != nil { 
-		fmt.Printf("❌ File read error: %v\n", err)
-		return 
-	}
+	if err != nil { return }
 	defer os.Remove(fileName)
 
 	fileSize := uint64(len(fileData))
@@ -123,11 +120,11 @@ func downloadAndSend(client *whatsmeow.Client, v *events.Message, ytUrl, mode st
 
 	up, err := client.Upload(context.Background(), fileData, mType)
 	if err != nil {
-		replyMessage(client, v, "❌ WhatsApp server rejected the file.")
+		replyMessage(client, v, "❌ Failed to upload to WhatsApp servers.")
 		return
 	}
 
-	// 3. میسج ڈیلیوری (Protocol Delivery)
+	// 3. فائنل میسج ڈیلیوری
 	var finalMsg waProto.Message
 	if mode == "audio" {
 		finalMsg.DocumentMessage = &waProto.DocumentMessage{
