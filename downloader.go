@@ -277,7 +277,6 @@ func handleYTS(client *whatsmeow.Client, v *events.Message, query string) {
 	if query == "" { return }
 	react(client, v.Info.Chat, v.Info.ID, "🔍")
 	
-	// 🛠️ ڈیٹا نکالنا
 	botLID := getBotLIDFromDB(client)
 	senderLID := v.Info.Sender.User
 
@@ -287,38 +286,24 @@ func handleYTS(client *whatsmeow.Client, v *events.Message, query string) {
 	if len(lines) < 2 { return }
 
 	var results []YTSResult
-	// 🎨 کارڈ ڈیزائن (Border Fix): ہم نے ڈیزائن ایسا رکھا ہے کہ ٹائٹل جتنا بھی بڑا ہو کارڈ نہیں ٹوٹے گا
-	menuText := "╔════════════════════╗\n║    📺 YOUTUBE SEARCH \n╠════════════════════╣\n"
+	// ✨ نیا ڈیزائن: یہ ڈیزائن واٹس ایپ پر کبھی نہیں ٹوٹتا
+	menuText := "╭─── 📺 *YOUTUBE SEARCH* ───╮\n│\n"
 	
 	for i := 0; i < len(lines)-1; i += 2 {
 		title := lines[i]
-		// اگر ٹائٹل بہت بڑا ہے تو اسے اگلی لائن پر جانے دیں، کارڈ کے اندر ہی رہے گا
 		results = append(results, YTSResult{Title: title, Url: "https://www.youtube.com/watch?v=" + lines[i+1]})
-		menuText += fmt.Sprintf("║ 📍 [%d] %s\n║ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n", (i/2)+1, title)
+		menuText += fmt.Sprintf("📖 *[%d]* %s\n│ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n", (i/2)+1, title)
 	}
-	menuText += "╚════════════════════╝"
+	menuText += "│\n╰────────────────────╯"
 
-	// کارڈ بھیجیں
 	resp, err := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String(menuText)},
 	})
 
-	if err != nil { return }
-
-	// 🔑 میسج آئی ڈی کو چابی (Key) بنائیں تاکہ مکسنگ نہ ہو
-	fmt.Printf("📂 [YTS CACHED] MsgID: %s for User: %s\n", resp.ID, senderLID)
-	
-	ytCache[resp.ID] = YTSession{
-		Results:  results,
-		SenderID: senderLID,
-		BotLID:   botLID,
+	if err == nil {
+		ytCache[resp.ID] = YTSession{Results: results, SenderID: senderLID, BotLID: botLID}
+		go func() { time.Sleep(2 * time.Minute); delete(ytCache, resp.ID) }()
 	}
-
-	// 2 منٹ بعد صفائی
-	go func() {
-		time.Sleep(2 * time.Minute)
-		delete(ytCache, resp.ID)
-	}()
 }
 
 func handleYTDownloadMenu(client *whatsmeow.Client, v *events.Message, ytUrl string) {

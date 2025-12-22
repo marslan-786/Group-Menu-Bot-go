@@ -62,7 +62,6 @@ func isKnownCommand(text string) bool {
 }
 
 func processMessage(client *whatsmeow.Client, v *events.Message) {
-	// 1️⃣ بنیادی معلومات نکالیں (ID اور پریفکس)
 	rawBotID := client.Store.ID.User
 	botID := botCleanIDCache[rawBotID]
 	if botID == "" { botID = getCleanID(rawBotID) } 
@@ -73,38 +72,55 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 	bodyClean := strings.TrimSpace(bodyRaw)
 	senderID := v.Info.Sender.User
 	chatID := v.Info.Chat.String()
-	isGroup := v.Info.IsGroup // ✅ یہ پہلے ڈیفائن کر دیا (ایرر ختم)
 
-	// 🛡️ 2️⃣ سیکیورٹی چیک (لنک ڈیلیٹ کرنے کے لیے اسے سب سے اوپر رکھا ہے)
-	if isGroup {
-		go checkSecurity(client, v)
+	// 🛠️ ریپلائی آئی ڈی نکالیں
+	var qID string
+	if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
+		qID = extMsg.ContextInfo.GetStanzaID()
 	}
 
-	// ⚡ 3️⃣ اسٹیج/سیٹ اپ اور ڈاؤنلوڈر کیش چیک کریں
-	isSetup := false
-	extMsg := v.Message.GetExtendedTextMessage()
-	if extMsg != nil && extMsg.ContextInfo != nil {
-		quotedID := extMsg.ContextInfo.GetStanzaID()
-		if _, ok := setupMap[quotedID]; ok {
-			isSetup = true
-		}
-	}
+	// 🔍 چیک کریں کیا یہ کسی ایکٹو سیشن کا ریپلائی ہے؟
+	_, isSetup := setupMap[qID]
+	_, isYTS := ytCache[qID]
+	_, isYTSelect := ytDownloadCache[qID]
+	_, isTT := ttCache[qID] // اگر ٹک ٹاک بھی میسج آئی ڈی پر ہے
 
-	// ڈاؤنلوڈر ویریبلز ڈیفائن کریں (ایرر ختم کرنے کے لیے)
-	_, isTT := ttCache[senderID]
-	_, isYTS := ytCache[senderID]
-	_, isYTSelect := ytDownloadCache[chatID]
+	// 🛡️ سیکیورٹی چیک (لنک ڈیلیٹ کرنے کے لیے)
+	if v.Info.IsGroup { go checkSecurity(client, v) }
 
-	// 🛠️ 4️⃣ مین فلٹر (اگر کمانڈ نہیں ہے اور نہ ہی کوئی سیشن، تو یہیں رک جاؤ)
-	if !strings.HasPrefix(bodyClean, prefix) && !isSetup && !isTT && !isYTS && !isYTSelect && chatID != "status@broadcast" {
+	// 🚀 مین فلٹر: اگر کمانڈ نہیں ہے اور نہ ہی کوئی ریپلائی سیشن، تو چپ رہے
+	if !strings.HasPrefix(bodyClean, prefix) && !isSetup && !isYTS && !isYTSelect && !isTT && chatID != "status@broadcast" {
 		return 
 	}
 
-	// 5️⃣ سیکیورٹی سیٹ اپ رسپانس ہینڈلر
-	if isSetup {
-		handleSetupResponse(client, v)
-		return
+	// 🎯 ریپلائی ہینڈلنگ
+	if isSetup { handleSetupResponse(client, v); return }
+	
+	// اب یہاں وہ یوٹیوب والا حصہ ڈالیں جو پچھلی باری دیا تھا (qID والا)
+	if qID != "" {
+		// 📺 یوٹیوب سرچ رزلٹ چیک
+		if session, ok := ytCache[qID]; ok {
+			if session.BotLID == botID && session.SenderID == senderID {
+				var idx int
+				fmt.Sscanf(bodyClean, "%d", &idx)
+				if idx >= 1 && idx <= len(session.Results) {
+					delete(ytCache, qID)
+					handleYTDownloadMenu(client, v, session.Results[idx-1].Url)
+					return
+				}
+			}
+		}
+		// 🎬 ڈاؤنلوڈ آپشن چیک
+		if state, ok := ytDownloadCache[qID]; ok {
+			if state.BotLID == botID && state.SenderID == senderID {
+				delete(ytDownloadCache, qID)
+				go handleYTDownload(client, v, state.Url, bodyClean, (bodyClean == "4"))
+				return
+			}
+		}
 	}
+
+	// باقی کمانڈز...
 
     // ... باقی سارا کوڈ (Status, Security check, Commands) ویسے ہی رہنے دیں
 
@@ -164,36 +180,7 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		}
 	}
 
-	// یوٹیوب سرچ انتخاب
-// --- 📺 یوٹیوب سرچ اور ڈاؤنلوڈ ہینڈلنگ (Multi-Bot Proof) ---
-	extMsg = v.Message.GetExtendedTextMessage()
-// --- 📺 یوٹیوب ہینڈلنگ (Clean Version) ---
-	if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
-		qID := extMsg.ContextInfo.GetStanzaID() // ہم نے نام 'qID' رکھ دیا تاکہ ٹکراؤ نہ ہو
 
-		// 1️⃣ سرچ رزلٹ چیک
-		if session, ok := ytCache[qID]; ok {
-			if session.BotLID == botID && session.SenderID == senderID {
-				var idx int
-				fmt.Sscanf(bodyClean, "%d", &idx)
-				if idx >= 1 && idx <= len(session.Results) {
-					selected := session.Results[idx-1]
-					delete(ytCache, qID)
-					handleYTDownloadMenu(client, v, selected.Url)
-					return
-				}
-			}
-		}
-
-		// 2️⃣ ڈاؤنلوڈ آپشن چیک
-		if state, ok := ytDownloadCache[qID]; ok {
-			if state.BotLID == botID && state.SenderID == senderID {
-				delete(ytDownloadCache, qID)
-				go handleYTDownload(client, v, state.Url, bodyClean, (bodyClean == "4"))
-				return
-			}
-		}
-	}
 
 	// 7. کمانڈ پارسنگ
 	cmdBody := strings.ToLower(strings.TrimPrefix(bodyClean, prefix))
