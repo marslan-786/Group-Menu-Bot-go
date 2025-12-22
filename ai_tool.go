@@ -692,15 +692,11 @@ func handleMega(client *whatsmeow.Client, v *events.Message, urlStr string) {
 	react(client, v.Info.Chat, v.Info.ID, "🚀")
 	sendPremiumCard(client, v, "Mega Downloader", "Universal-Core", "🚀 Extracting encrypted stream...")
 
-	// 🧵 گوروٹین تاکہ بوٹ باقی کام کرتا رہے
 	go func() {
-		// 1️⃣ فائل ڈاؤن لوڈ کرنے کے لیے ایک مخصوص فولڈر بنائیں
 		tempDir := fmt.Sprintf("mega_%d", time.Now().UnixNano())
 		os.Mkdir(tempDir, 0755)
-		defer os.RemoveAll(tempDir) // کام ختم ہونے پر پورا فولڈر صاف
+		defer os.RemoveAll(tempDir)
 
-		// 2️⃣ 🚀 ایٹمی کمانڈ: megadl (یہ خود بخود فائل ڈکرپٹ کرتا ہے)
-		// --path: فائل کو ہمارے بنائے ہوئے فولڈر میں ڈالے گا
 		cmd := exec.Command("megadl", "--no-progress", "--path="+tempDir, urlStr)
 		output, err := cmd.CombinedOutput()
 		
@@ -709,7 +705,6 @@ func handleMega(client *whatsmeow.Client, v *events.Message, urlStr string) {
 			return
 		}
 
-		// 3️⃣ ڈاؤن لوڈ شدہ فائل کا نام ڈھونڈیں
 		files, _ := os.ReadDir(tempDir)
 		if len(files) == 0 {
 			replyMessage(client, v, "❌ *Error:* File vanished during extraction.")
@@ -720,31 +715,30 @@ func handleMega(client *whatsmeow.Client, v *events.Message, urlStr string) {
 		filePath := tempDir + "/" + fileName
 		fileData, _ := os.ReadFile(filePath)
 
-		// 4️⃣ واٹس ایپ پر اپلوڈ کریں
-		// ہم MediaDocument استعمال کریں گے تاکہ ہر قسم کی فائل (APK, ZIP, MP4) چلی جائے
 		up, err := client.Upload(context.Background(), fileData, whatsmeow.MediaDocument)
 		if err != nil {
 			replyMessage(client, v, "❌ WhatsApp upload failed.")
 			return
 		}
 
-		// 5️⃣ فائنل میسج
+		// ✅ فکسڈ میسج اسٹرکچر (ContextInfo_ExternalAdReplyInfo استعمال کیا ہے)
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			DocumentMessage: &waProto.DocumentMessage{
 				URL:           proto.String(up.URL),
 				DirectPath:    proto.String(up.DirectPath),
 				MediaKey:      up.MediaKey,
-				Mimetype:      proto.String("application/octet-stream"), // آٹو ڈیٹیکٹ
+				Mimetype:      proto.String("application/octet-stream"),
 				Title:         proto.String(fileName),
 				FileName:      proto.String(fileName),
 				FileLength:    proto.Uint64(uint64(len(fileData))),
 				FileSHA256:    up.FileSHA256,
 				FileEncSHA256: up.FileEncSHA256,
 				ContextInfo: &waProto.ContextInfo{
-					ExternalAdReply: &waProto.ContextInfo_ExternalAdReply{
-						Title:    proto.String("Impossible Mega Engine"),
-						Body:     proto.String("File: " + fileName),
+					ExternalAdReply: &waProto.ContextInfo_ExternalAdReplyInfo{ // 🛠️ 'Info' ایڈ کر دیا گیا
+						Title:     proto.String("Impossible Mega Engine"),
+						Body:      proto.String("File: " + fileName),
 						SourceURL: proto.String(urlStr),
+						MediaType: waProto.ContextInfo_ExternalAdReplyInfo_DOCUMENT.Enum(), // میڈیا ٹائپ بھی فکس کر دی
 					},
 				},
 			},
