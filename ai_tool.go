@@ -533,32 +533,33 @@ func handleToPTT(client *whatsmeow.Client, v *events.Message) {
 func handleRemoveBG(client *whatsmeow.Client, v *events.Message) {
 	extMsg := v.Message.GetExtendedTextMessage()
 	if extMsg == nil || extMsg.ContextInfo == nil || extMsg.ContextInfo.QuotedMessage == nil {
-		replyMessage(client, v, "⚠️ Please reply to an image.")
+		replyMessage(client, v, "⚠️ Please reply to an image with *.removebg*")
 		return
 	}
 
-	imgMsg := extMsg.ContextInfo.QuotedMessage.GetImageMessage()
+	quotedMsg := extMsg.ContextInfo.QuotedMessage
+	imgMsg := quotedMsg.GetImageMessage()
 	if imgMsg == nil {
-		replyMessage(client, v, "⚠️ Not an image.")
+		replyMessage(client, v, "⚠️ The replied message is not an image.")
 		return
 	}
 
 	react(client, v.Info.Chat, v.Info.ID, "✂️")
-	replyMessage(client, v, "🪄 *Impossible Local Engine:* Processing...")
+	replyMessage(client, v, "🪄 *Impossible Engine:* Carving out the subject...")
 
 	imgData, err := client.Download(context.Background(), imgMsg)
 	if err != nil { return }
 
-	inputPath := fmt.Sprintf("input_%d.jpg", time.Now().UnixNano())
-	outputPath := fmt.Sprintf("output_%d.png", time.Now().UnixNano())
+	inputPath := fmt.Sprintf("in_%d.jpg", time.Now().UnixNano())
+	outputPath := fmt.Sprintf("out_%d.png", time.Now().UnixNano())
 	os.WriteFile(inputPath, imgData, 0644)
 
-	// 🛠️ ڈیبگنگ کمانڈ: ہم پائتھن کے ذریعے رن کر رہے ہیں
-	cmd := exec.Command("python3", "-m", "rembg", "i", inputPath, outputPath)
+	// 🛠️ FIX: 'python3 -m rembg' کی جگہ اب براہ راست 'rembg' کمانڈ استعمال ہوگی
+	// ہم نے ڈوکر فائل میں 'rembg[cli]' ڈالا ہے، تو یہ ڈائریکٹ چلے گا
+	cmd := exec.Command("rembg", "i", inputPath, outputPath)
 	output, err := cmd.CombinedOutput()
 	
 	if err != nil {
-		// ✅ اب یہ آپ کو بتائے گا کہ اصل میں مسئلہ کیا ہے
 		replyMessage(client, v, fmt.Sprintf("❌ *Engine Error:* \n%s", string(output)))
 		os.Remove(inputPath)
 		return
@@ -579,12 +580,13 @@ func handleRemoveBG(client *whatsmeow.Client, v *events.Message) {
 			DirectPath:    proto.String(up.DirectPath),
 			MediaKey:      up.MediaKey,
 			Mimetype:      proto.String("image/png"),
-			Caption:       proto.String("✅ *Background Removed*"),
+			Caption:       proto.String("✅ *Background Removed Locally*"),
 			FileSHA256:    up.FileSHA256,
 			FileEncSHA256: up.FileEncSHA256,
-			FileLength:    proto.Uint64(uint64(len(finalData))), // سائز دینا لازمی ہے
+			FileLength:    proto.Uint64(uint64(len(finalData))),
 		},
 	})
+	react(client, v.Info.Chat, v.Info.ID, "✅")
 }
 
 // 🎮 STEAM (.steam) - NEW & FILLED
