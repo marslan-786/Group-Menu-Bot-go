@@ -20,145 +20,138 @@ import (
 )
 
 // ==================== ٹولز سسٹم ====================
-func handleSticker(client *whatsmeow.Client, v *events.Message) {
-	react(client, v.Info.Chat, v.Info.ID, "🎨")
-	
-	msg := `╔═════════════════════╗
-║   🎨 STICKER PROCESSING    
-╠═════════════════════╣
-║  ⏳ Creating sticker...    
-║  Please wait...           
-╚═════════════════════╝`
-	replyMessage(client, v, msg)
+func handleToSticker(client *whatsmeow.Client, v *events.Message) {
+	var quoted *waProto.Message
+	if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
+		quoted = extMsg.ContextInfo.QuotedMessage
+	}
 
-	data, err := downloadMedia(client, v.Message)
-	if err != nil {
-		errMsg := `╔═════════════════╗
-║  ❌ NO MEDIA FOUND       
-╠═════════════════╣
-║  Reply to an image or     
-║  video to create sticker  
-╚═════════════════╝`
-		replyMessage(client, v, errMsg)
+	var media whatsmeow.DownloadableMessage
+	isAnimated := false
+
+	if quoted.GetImageMessage() != nil {
+		media = quoted.GetImageMessage()
+	} else if quoted.GetVideoMessage() != nil {
+		media = quoted.GetVideoMessage()
+		isAnimated = true
+	} else {
+		replyMessage(client, v, "❌ Reply to a Photo or Video to make a sticker.")
 		return
 	}
 
-	ioutil.WriteFile("temp.jpg", data, 0644)
-	exec.Command("ffmpeg", "-y", "-i", "temp.jpg", "-vcodec", "libwebp", "temp.webp").Run()
-	b, _ := ioutil.ReadFile("temp.webp")
-	up, _ := client.Upload(context.Background(), b, whatsmeow.MediaImage)
+	react(client, v.Info.Chat, v.Info.ID, "✨")
+	data, _ := client.Download(context.Background(), media)
+	input := "temp_in"
+	output := "temp_out.webp"
+	os.WriteFile(input, data, 0644)
+
+	// FFmpeg Sticker Logic (512x512)
+	if isAnimated {
+		exec.Command("ffmpeg", "-y", "-i", input, "-vcodec", "libwebp", "-filter:v", "fps=fps=15,scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0", "-lossless", "1", "-loop", "0", "-preset", "default", "-an", "-vsync", "0", output).Run()
+	} else {
+		exec.Command("ffmpeg", "-y", "-i", input, "-vcodec", "libwebp", "-filter:v", "scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0", output).Run()
+	}
+
+	finalData, _ := os.ReadFile(output)
+	up, _ := client.Upload(context.Background(), finalData, whatsmeow.MediaSticker)
 
 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		StickerMessage: &waProto.StickerMessage{
 			URL:           proto.String(up.URL),
 			DirectPath:    proto.String(up.DirectPath),
 			MediaKey:      up.MediaKey,
-			FileEncSHA256: up.FileEncSHA256,
-			FileSHA256:    up.FileSHA256,
 			Mimetype:      proto.String("image/webp"),
+			FileLength:    proto.Uint64(uint64(len(finalData))),
+			FileSHA256:    up.FileSHA256,
+			FileEncSHA256: up.FileEncSHA256,
 		},
 	})
-
-	os.Remove("temp.jpg")
-	os.Remove("temp.webp")
+	os.Remove(input); os.Remove(output)
 }
 
 func handleToImg(client *whatsmeow.Client, v *events.Message) {
-	react(client, v.Info.Chat, v.Info.ID, "🖼️")
-	
-	msg := `╔══════════════════╗
-║ 🖼️ IMAGE CONVERSION      
-╠══════════════════╣
-║ ⏳ Converting to image... 
-║       Please wait...           
-╚══════════════════╝`
-	replyMessage(client, v, msg)  // اب msg صحیح ہے
+	// 🛠️ ریپلائی نکالنے کا ایٹمی طریقہ
+	var stickerMsg *waProto.StickerMessage
+	if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
+		stickerMsg = extMsg.ContextInfo.QuotedMessage.GetStickerMessage()
+	}
 
-	data, err := downloadMedia(client, v.Message)
-	if err != nil {
-		errMsg := `╔══════════════════╗
-║  ❌ NO STICKER FOUND     
-╠══════════════════╣
-║  Reply to a sticker to    
-║  convert it to image      
-╚══════════════════╝`
-		replyMessage(client, v, errMsg)
+	if stickerMsg == nil {
+		replyMessage(client, v, "❌ *Error:* Please reply to a sticker with *.toimg*")
 		return
 	}
 
-	ioutil.WriteFile("temp.webp", data, 0644)
-	exec.Command("ffmpeg", "-y", "-i", "temp.webp", "temp.png").Run()
-	b, _ := ioutil.ReadFile("temp.png")
-	up, _ := client.Upload(context.Background(), b, whatsmeow.MediaImage)
+	react(client, v.Info.Chat, v.Info.ID, "🖼️")
+	sendToolCard(client, v, "Media Converter", "WebP to PNG", "⏳ Processing Image...")
+
+	// ڈاؤن لوڈ کریں
+	data, err := client.Download(context.Background(), stickerMsg)
+	if err != nil { return }
+
+	input := fmt.Sprintf("in_%d.webp", time.Now().UnixNano())
+	output := fmt.Sprintf("out_%d.png", time.Now().UnixNano())
+	os.WriteFile(input, data, 0644)
+
+	// FFmpeg conversion (Transparency handle کرنے کے لیے)
+	exec.Command("ffmpeg", "-y", "-i", input, output).Run()
+	
+	finalData, _ := os.ReadFile(output)
+	up, err := client.Upload(context.Background(), finalData, whatsmeow.MediaImage)
+	if err != nil { return }
 
 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		ImageMessage: &waProto.ImageMessage{
 			URL:           proto.String(up.URL),
 			DirectPath:    proto.String(up.DirectPath),
 			MediaKey:      up.MediaKey,
-			FileEncSHA256: up.FileEncSHA256,
-			FileSHA256:    up.FileSHA256,
 			Mimetype:      proto.String("image/png"),
-			Caption:       proto.String("✅ Converted to Image"),
-			ContextInfo: &waProto.ContextInfo{
-				StanzaID:      proto.String(v.Info.ID),
-				Participant:   proto.String(v.Info.Sender.String()),
-				QuotedMessage: v.Message,
-			},
+			Caption:       proto.String("✅ *Converted to Image*"),
+			FileSHA256:    up.FileSHA256,
+			FileEncSHA256: up.FileEncSHA256,
+			FileLength:    proto.Uint64(uint64(len(finalData))), // 🛠️ بگ فکس: سائز لازمی ہے
 		},
 	})
-
-	os.Remove("temp.webp")
-	os.Remove("temp.png")
+	os.Remove(input); os.Remove(output)
 }
 
 func handleToVideo(client *whatsmeow.Client, v *events.Message) {
-	react(client, v.Info.Chat, v.Info.ID, "🎥")
-	
-	msg := `╔═════════════════╗
-║ 🎥 VIDEO CONVERSION      
-╠═════════════════╣
-║ ⏳ Converting to video... 
-║       Please wait...           
-╚═════════════════╝`
-	replyMessage(client, v, msg)
+	var stickerMsg *waProto.StickerMessage
+	if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
+		stickerMsg = extMsg.ContextInfo.QuotedMessage.GetStickerMessage()
+	}
 
-	data, err := downloadMedia(client, v.Message)
-	if err != nil {
-		errMsg := `╔══════════════════╗
-║  ❌ NO STICKER FOUND     
-╠══════════════════╣
-║  Reply to a sticker to    
-║  convert it to video      
-╚══════════════════╝`
-		replyMessage(client, v, errMsg)
+	if stickerMsg == nil || !stickerMsg.GetIsAnimated() {
+		replyMessage(client, v, "❌ Please reply to an *Animated* sticker.")
 		return
 	}
 
-	ioutil.WriteFile("temp.webp", data, 0644)
-	exec.Command("ffmpeg", "-y", "-i", "temp.webp", "temp.mp4").Run()
-	d, _ := ioutil.ReadFile("temp.mp4")
-	up, _ := client.Upload(context.Background(), d, whatsmeow.MediaVideo)
+	react(client, v.Info.Chat, v.Info.ID, "🎥")
+	sendToolCard(client, v, "Motion Engine", "WebP to MP4", "🎬 Rendering Video...")
+
+	data, _ := client.Download(context.Background(), stickerMsg)
+	input := fmt.Sprintf("in_%d.webp", time.Now().UnixNano())
+	output := fmt.Sprintf("out_%d.mp4", time.Now().UnixNano())
+	os.WriteFile(input, data, 0644)
+
+	// 🛠️ FFmpeg ایٹمی کمانڈ فار ویڈیو (WhatsApp Compatible)
+	exec.Command("ffmpeg", "-y", "-i", input, "-pix_fmt", "yuv420p", "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", output).Run()
+	
+	finalData, _ := os.ReadFile(output)
+	up, _ := client.Upload(context.Background(), finalData, whatsmeow.MediaVideo)
 
 	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		VideoMessage: &waProto.VideoMessage{
 			URL:           proto.String(up.URL),
 			DirectPath:    proto.String(up.DirectPath),
 			MediaKey:      up.MediaKey,
-			FileEncSHA256: up.FileEncSHA256,
-			FileSHA256:    up.FileSHA256,
 			Mimetype:      proto.String("video/mp4"),
-			Caption:       proto.String("✅ Converted to Video"),
-			ContextInfo: &waProto.ContextInfo{
-				StanzaID:      proto.String(v.Info.ID),
-				Participant:   proto.String(v.Info.Sender.String()),
-				QuotedMessage: v.Message,
-			},
+			Caption:       proto.String("✅ *Converted to Video*"),
+			FileLength:    proto.Uint64(uint64(len(finalData))),
+			FileSHA256:    up.FileSHA256,
+			FileEncSHA256: up.FileEncSHA256,
 		},
 	})
-
-	os.Remove("temp.webp")
-	os.Remove("temp.mp4")
+	os.Remove(input); os.Remove(output)
 }
 
 

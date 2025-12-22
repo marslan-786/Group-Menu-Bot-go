@@ -233,12 +233,12 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 		handleGroup(client, v, words[1:])
 	case "del", "delete":
 		handleDelete(client, v)
-	case "sticker", "s":
-		handleSticker(client, v)
-	case "toimg":
-		handleToImg(client, v)
-	case "tovideo":
-		handleToVideo(client, v)
+	case "toimg": 
+	    handleToImg(client, v)
+    case "tovideo", "togif": 
+        handleToVideo(client, v)
+    case "s", "sticker": 
+        handleToSticker(client, v)
 	case "tourl":
 		handleToURL(client, v)
 	case "translate", "tr":
