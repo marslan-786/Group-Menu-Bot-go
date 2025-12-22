@@ -277,9 +277,8 @@ func handleYTS(client *whatsmeow.Client, v *events.Message, query string) {
 	if query == "" { return }
 	react(client, v.Info.Chat, v.Info.ID, "🔍")
 	
-	// 🆔 بوٹ کا فون نمبر لیں (LID کا چکر ختم)
-	myBotNum := client.Store.ID.User 
-	senderLID := v.Info.Sender.User
+	// بوٹ کی کلین آئی ڈی لیں
+	myID := getCleanID(client.Store.ID.User)
 
 	cmd := exec.Command("yt-dlp", "ytsearch5:"+query, "--get-title", "--get-id", "--no-playlist")
 	out, _ := cmd.Output()
@@ -287,13 +286,12 @@ func handleYTS(client *whatsmeow.Client, v *events.Message, query string) {
 	if len(lines) < 2 { return }
 
 	var results []YTSResult
-	// ✨ نیا "بارڈر پروف" ڈیزائن (یہ واٹس ایپ پر کبھی نہیں ٹوٹتا)
+	// ✨ Bullet Style Design: یہ کبھی نہیں ٹوٹتا
 	menuText := "╭─── 📺 *YOUTUBE SEARCH* ───╮\n│\n"
 	
 	for i := 0; i < len(lines)-1; i += 2 {
 		title := lines[i]
 		results = append(results, YTSResult{Title: title, Url: "https://www.youtube.com/watch?v=" + lines[i+1]})
-		// Bullet Style استعمال کیا ہے تاکہ ٹائٹل جتنا بھی بڑا ہو، ڈیزائن سیدھا رہے
 		menuText += fmt.Sprintf("📍 *[%d]* %s\n│ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n", (i/2)+1, title)
 	}
 	menuText += "│\n╰────────────────────╯"
@@ -303,20 +301,13 @@ func handleYTS(client *whatsmeow.Client, v *events.Message, query string) {
 	})
 
 	if err == nil {
-		// 💾 فون نمبر کے ساتھ سیو کریں
-		ytCache[resp.ID] = YTSession{
-			Results:  results, 
-			SenderID: senderLID, 
-			BotLID:   myBotNum, // JID استعمال کی
-		}
+		ytCache[resp.ID] = YTSession{Results: results, SenderID: v.Info.Sender.User, BotLID: myID}
 		go func() { time.Sleep(2 * time.Minute); delete(ytCache, resp.ID) }()
 	}
 }
 
 func handleYTDownloadMenu(client *whatsmeow.Client, v *events.Message, ytUrl string) {
-	botLID := getBotLIDFromDB(client)
-	senderLID := v.Info.Sender.User
-
+	myID := getCleanID(client.Store.ID.User)
 	menu := `╔════════════════════╗
 ║    🎬 VIDEO SELECTOR 
 ╠════════════════════╣
@@ -332,22 +323,10 @@ func handleYTDownloadMenu(client *whatsmeow.Client, v *events.Message, ytUrl str
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String(menu)},
 	})
 
-	if err != nil { return }
-
-	// 🔑 یہاں بھی میسج آئی ڈی کو لاک کر دیا
-	fmt.Printf("📂 [YT-DL CACHED] MsgID: %s\n", resp.ID)
-
-	ytDownloadCache[resp.ID] = YTState{
-		Url:      ytUrl,
-		Title:    "YouTube Media",
-		SenderID: senderLID,
-		BotLID:   botLID,
+	if err == nil {
+		ytDownloadCache[resp.ID] = YTState{Url: ytUrl, BotLID: myID}
+		go func() { time.Sleep(1 * time.Minute); delete(ytDownloadCache, resp.ID) }()
 	}
-
-	go func() {
-		time.Sleep(1 * time.Minute)
-		delete(ytDownloadCache, resp.ID)
-	}()
 }
 
 func handleYTDownload(client *whatsmeow.Client, v *events.Message, ytUrl, format string, isAudio bool) {
