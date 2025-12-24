@@ -686,51 +686,60 @@ func sendMenu(client *whatsmeow.Client, v *events.Message) {
 }
 
 func sendPing(client *whatsmeow.Client, v *events.Message) {
-	// --- 1. Real Latency Test (Ping) ---
-	start := time.Now()
-	_, err := http.Get("https://www.google.com")
-	if err != nil {
-		fmt.Println("Ping Error:", err)
-	}
-	latency := time.Since(start).Milliseconds()
+	// 1. Reaction to show active state
+	react(client, v.Info.Chat, v.Info.ID, "⚡")
 
-	// --- 2. Real Speed Test (GB Mode) ---
-	var dlSpeedGbps, ulSpeedGbps float64
+	// 2. Start Message
+	replyMessage(client, v, "🔁 *System:* Pinging Server & Calculating Speeds...")
+
+	// --- SpeedTest Logic (Same as handleSpeedTest) ---
+	var speedClient = speedtest.New()
 	
-	user, _ := speedtest.FetchUserInfo()
-	serverList, _ := speedtest.FetchServer(user)
+	// Fetch Servers
+	serverList, err := speedClient.FetchServers()
+	if err != nil {
+		replyMessage(client, v, "❌ Ping Failed: Could not fetch servers.")
+		return
+	}
+	
 	targets, _ := serverList.FindServer([]int{})
-
-	if len(targets) > 0 {
-		s := targets[0]
-		_ = s.PingTest(nil)
-		_ = s.DownloadTest()
-		_ = s.UploadTest()
-
-		// Convert Mbps to Gbps (Division by 1024)
-		dlSpeedGbps = s.DLSpeed / 1024.0
-		ulSpeedGbps = s.ULSpeed / 1024.0
+	if len(targets) == 0 {
+		replyMessage(client, v, "❌ Ping Failed: No servers found.")
+		return
 	}
 
-	uptimeStr := getFormattedUptime() 
+	// Run Test
+	s := targets[0]
+	s.PingTest(nil)
+	s.DownloadTest()
+	s.UploadTest()
 
-	// --- 3. Heavy Style Message Formatting (GB Version) ---
-    // %.4f ka matlab hai ashariyah (.) ke baad 4 hindsay dikhaye ga (e.g 1.0245 GB)
-	msg := fmt.Sprintf(`╔════════════════════════╗
-║    ⚡ 𝐒𝐘𝐒𝐓𝐄𝐌 𝐒𝐓𝐀𝐓𝐔𝐒 ⚡
-╠════════════════════════╣
-║ 📶 𝐋𝐚𝐭𝐞𝐧𝐜𝐲   : %d ms
-║ ⬇️ 𝐃𝐨𝐰𝐧𝐥𝐨𝐚𝐝  : %.4f GBps
-║ ⬆️ 𝐔𝐩𝐥𝐨𝐚𝐝    : %.4f GBps
-╠════════════════════════╣
-║ ⏱️ 𝐔𝐩𝐭𝐢𝐦𝐞    : %s
-║ 👑 𝐎𝐰𝐧𝐞𝐫     : %s
-╠════════════════════════╣
-║   🟢 𝐒𝐞𝐫𝐯𝐞𝐫 𝐢𝐬 𝐎𝐧𝐥𝐢𝐧𝐞
-╚════════════════════════╝`, latency, dlSpeedGbps, ulSpeedGbps, uptimeStr, OWNER_NAME)
+	// --- GB Conversion Logic (Special Requirement) ---
+	dlGbps := s.DLSpeed / 1024.0
+	ulGbps := s.ULSpeed / 1024.0
 
-	sendReplyMessage(client, v, msg)
+	// Get Uptime
+	uptimeStr := getFormattedUptime()
+
+	// --- Premium Design (Matching your new style) ---
+	result := fmt.Sprintf("╭─── ⚡ *SYSTEM STATUS* ───╮\n"+
+		"│\n"+
+		"│ 📡 *Node:* %s\n"+
+		"│ ⏱️ *Uptime:* %s\n"+
+		"│ 👑 *Owner:* %s\n"+
+		"│ ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"+
+		"│ 📶 *Latency:* %s\n"+
+		"│ 📥 *Download:* %.4f GBps\n"+
+		"│ 📤 *Upload:* %.4f GBps\n"+
+		"│\n"+
+		"╰────────────────────╯",
+		s.Name, uptimeStr, OWNER_NAME, s.Latency, dlGbps, ulGbps)
+
+	// Final Reply
+	replyMessage(client, v, result)
+	react(client, v.Info.Chat, v.Info.ID, "✅")
 }
+
 
 
 
