@@ -698,7 +698,7 @@ func sendPing(client *whatsmeow.Client, v *events.Message) {
 	var dlSpeedGbps, ulSpeedGbps float64
 	
 	user, _ := speedtest.FetchUserInfo()
-	serverList, _ := speedtest.FetchServerList(user)
+	serverList, _ := speedtest.FetchServer(user)
 	targets, _ := serverList.FindServer([]int{})
 
 	if len(targets) > 0 {
