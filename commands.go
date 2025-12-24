@@ -64,305 +64,349 @@ func isKnownCommand(text string) bool {
 
 
 func processMessage(client *whatsmeow.Client, v *events.Message) {
-	// 1️⃣ بنیادی معلومات نکالنا (JID ہینڈلنگ فکس کے ساتھ)
-	rawBotID := client.Store.ID.User
-	botID := botCleanIDCache[rawBotID]
-	if botID == "" { botID = getCleanID(rawBotID) } 
-	
-	prefix := getPrefix(botID)
-	bodyRaw := getText(v.Message)
-	if bodyRaw == "" { return }
-	
-	bodyClean := strings.TrimSpace(bodyRaw)
-	// ✅ VIP فکس: ToNonAD() استعمال کریں تاکہ کمپیوٹر اور موبائل کی آئی ڈی ایک ہی رہے
-	senderID := v.Info.Sender.ToNonAD().String() 
-	chatID := v.Info.Chat.String()
-	isGroup := v.Info.IsGroup
+    // ⚡ Panic Recovery: تاکہ بوٹ کریش نہ ہو
+    defer func() {
+        if r := recover(); r != nil {
+            fmt.Printf("⚠️ Critical Error in ProcessMessage: %v\n", r)
+        }
+    }()
 
-	// 🛠️ 2️⃣ ریپلائی آئی ڈی (qID) نکالنا
-	var qID string
-	if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
-		qID = extMsg.ContextInfo.GetStanzaID()
-	}
+    // 1️⃣ بنیادی معلومات نکالنا (JID ہینڈلنگ - Fast Memory Ops)
+    rawBotID := client.Store.ID.User
+    botID := botCleanIDCache[rawBotID]
+    if botID == "" {
+        botID = getCleanID(rawBotID)
+    }
 
-	// 🔍 3️⃣ سیشنز اور اسٹیٹ چیک (Reply Logic)
-	// یوٹیوب ریپلائی (اکثر qID پر ہوتا ہے)
-	session, isYTS := ytCache[qID]
-	stateYT, isYTSelect := ytDownloadCache[qID]
-	_, isSetup := setupMap[qID]
-	
-	// ٹک ٹاک ریپلائی (یہ یوزر آئی ڈی پر ہے، اس لیے ہر میسج پر چیک ہوگا)
-	_, isTT := ttCache[senderID]
+    prefix := getPrefix(botID)
+    bodyRaw := getText(v.Message)
+    if bodyRaw == "" {
+        return
+    }
 
-	// 🛡️ 4️⃣ سیکیورٹی چیک (اینٹی لنک وغیرہ)
-	if isGroup {
-		go checkSecurity(client, v)
-	}
+    bodyClean := strings.TrimSpace(bodyRaw)
+    senderID := v.Info.Sender.ToNonAD().String()
+    chatID := v.Info.Chat.String()
+    isGroup := v.Info.IsGroup
 
-	// 🚀 5️⃣ مین فلٹر: اگر کمانڈ نہیں ہے اور کوئی سیشن بھی نہیں، تو خاموش رہے
-	isAnySession := isSetup || isYTS || isYTSelect || isTT
-	if !strings.HasPrefix(bodyClean, prefix) && !isAnySession && chatID != "status@broadcast" {
-		return 
-	}
+    // 🛠️ 2️⃣ ریپلائی آئی ڈی (qID) نکالنا
+    var qID string
+    if extMsg := v.Message.GetExtendedTextMessage(); extMsg != nil && extMsg.ContextInfo != nil {
+        qID = extMsg.ContextInfo.GetStanzaID()
+    }
 
-	// 🎯 6️⃣ ترجیحی ریپلائی ہینڈلنگ (Priority Logic)
+    // 🔍 3️⃣ سیشنز اور اسٹیٹ چیک (Fast Map Lookups)
+    session, isYTS := ytCache[qID]
+    stateYT, isYTSelect := ytDownloadCache[qID]
+    _, isSetup := setupMap[qID]
+    _, isTT := ttCache[senderID]
 
-	// A. سب سے پہلے سیٹ اپ (Security/Config)
-	if isSetup {
-		handleSetupResponse(client, v)
-		return
-	}
+    // 🛡️ 4️⃣ سیکیورٹی چیک (Async)
+    // ✅ FIX: سیکیورٹی چیک کو Goroutine میں ڈال دیا تاکہ یہ مین تھریڈ کو نہ روکے
+    if isGroup {
+        go func() {
+            defer recovery() // Helper function for recovery (نیچے دیکھیں)
+            checkSecurity(client, v)
+        }()
+    }
 
-	// B. ٹک ٹاک ریپلائی (اگر یوزر کیش میں ہے اور صرف 1, 2, 3 بھیجا ہے)
-	if isTT && !strings.HasPrefix(bodyClean, prefix) {
-		if bodyClean == "1" || bodyClean == "2" || bodyClean == "3" {
-			handleTikTokReply(client, v, bodyClean, senderID)
-			return
-		}
-	}
+    // 🚀 5️⃣ مین فلٹر: اگر کمانڈ نہیں ہے اور کوئی سیشن بھی نہیں، تو ریٹرن (CPU بچائیں)
+    isAnySession := isSetup || isYTS || isYTSelect || isTT
+    if !strings.HasPrefix(bodyClean, prefix) && !isAnySession && chatID != "status@broadcast" {
+        return
+    }
 
-	// C. یوٹیوب ریپلائی (اگر میسج کسی پرانے میسج کا ریپلائی ہے)
-	if qID != "" {
-		// یوٹیوب سرچ رزلٹ لسٹ
-		if isYTS && session.BotLID == botID {
-			var idx int
-			n, _ := fmt.Sscanf(bodyClean, "%d", &idx)
-			if n > 0 && idx >= 1 && idx <= len(session.Results) {
-				delete(ytCache, qID)
-				handleYTDownloadMenu(client, v, session.Results[idx-1].Url)
-				return
-			}
-		}
-		// یوٹیوب ویڈیو کوالٹی سلیکٹر
-		if isYTSelect && stateYT.BotLID == botID {
-			delete(ytDownloadCache, qID)
-			go handleYTDownload(client, v, stateYT.Url, bodyClean, (bodyClean == "4"))
-			return
-		}
-	}
+    // 📺 7️⃣ اسٹیٹس براڈکاسٹ ہینڈلنگ (Async)
+    if chatID == "status@broadcast" {
+        go func() {
+            defer recovery()
+            dataMutex.RLock()
+            if data.AutoStatus {
+                client.MarkRead(context.Background(), []types.MessageID{v.Info.ID}, v.Info.Timestamp, v.Info.Chat, v.Info.Sender)
+                if data.StatusReact {
+                    emojis := []string{"💚", "❤️", "🔥", "😍", "💯"}
+                    react(client, v.Info.Chat, v.Info.ID, emojis[time.Now().UnixNano()%int64(len(emojis))])
+                }
+            }
+            dataMutex.RUnlock()
+        }()
+        return
+    }
 
-	// 📺 7️⃣ اسٹیٹس براڈکاسٹ ہینڈلنگ
-	if chatID == "status@broadcast" {
-		dataMutex.RLock()
-		if data.AutoStatus {
-			client.MarkRead(context.Background(), []types.MessageID{v.Info.ID}, v.Info.Timestamp, v.Info.Chat, v.Info.Sender)
-			if data.StatusReact {
-				emojis := []string{"💚", "❤️", "🔥", "😍", "💯"}
-				react(client, v.Info.Chat, v.Info.ID, emojis[time.Now().UnixNano()%int64(len(emojis))])
-			}
-		}
-		dataMutex.RUnlock()
-		return
-	}
+    // 🔘 8️⃣ آٹو ریڈ اور ری ایکٹ (Completely Async - No Lag in Groups)
+    // ✅ FIX: یہ حصہ گروپس میں لیگ کرتا تھا، اب یہ الگ تھریڈ میں ہے
+    go func() {
+        defer recovery()
+        dataMutex.RLock()
+        if data.AutoRead {
+            client.MarkRead(context.Background(), []types.MessageID{v.Info.ID}, v.Info.Timestamp, v.Info.Chat, v.Info.Sender)
+        }
+        if data.AutoReact {
+            react(client, v.Info.Chat, v.Info.ID, "❤️")
+        }
+        dataMutex.RUnlock()
+    }()
 
-	// 🔘 8️⃣ آٹو ریڈ اور ری ایکٹ
-	dataMutex.RLock()
-	if data.AutoRead { client.MarkRead(context.Background(), []types.MessageID{v.Info.ID}, v.Info.Timestamp, v.Info.Chat, v.Info.Sender) }
-	if data.AutoReact { react(client, v.Info.Chat, v.Info.ID, "❤️") }
-	dataMutex.RUnlock()
+    // =========================================================================
+    // ⚡ SUPER FAST EXECUTION ENGINE (Goroutines for Heavy Tasks)
+    // =========================================================================
+    
+    // ہم سارا Logic ایک Goroutine میں ڈالیں گے تاکہ اگلا میسج فوراً پک ہو جائے
+    go func() {
+        defer recovery() // Safe execution
 
-	// ⚡ 9️⃣ مین کمانڈ پارسنگ (The Case-Safe Engine)
-	msgWithoutPrefix := strings.TrimPrefix(bodyClean, prefix)
-	words := strings.Fields(msgWithoutPrefix)
-	if len(words) == 0 { return }
+        // 🎯 6️⃣ ترجیحی ریپلائی ہینڈلنگ (Priority Logic)
+        if isSetup {
+            handleSetupResponse(client, v)
+            return
+        }
 
-	// کمانڈ کو چھوٹا کریں لیکن آرگیومنٹس (لنکس وغیرہ) کو ویسا ہی رہنے دیں
-	cmd := strings.ToLower(words[0]) 
-	fullArgs := strings.TrimSpace(strings.Join(words[1:], " "))
+        if isTT && !strings.HasPrefix(bodyClean, prefix) {
+            if bodyClean == "1" || bodyClean == "2" || bodyClean == "3" {
+                handleTikTokReply(client, v, bodyClean, senderID)
+                return
+            }
+        }
 
-	if !canExecute(client, v, cmd) { return }
+        if qID != "" {
+            if isYTS && session.BotLID == botID {
+                var idx int
+                n, _ := fmt.Sscanf(bodyClean, "%d", &idx)
+                if n > 0 && idx >= 1 && idx <= len(session.Results) {
+                    delete(ytCache, qID)
+                    handleYTDownloadMenu(client, v, session.Results[idx-1].Url)
+                    return
+                }
+            }
+            if isYTSelect && stateYT.BotLID == botID {
+                delete(ytDownloadCache, qID)
+                // یہ پہلے ہی `go` تھا، لیکن اب یہ ڈبل سیف ہے
+                handleYTDownload(client, v, stateYT.Url, bodyClean, (bodyClean == "4"))
+                return
+            }
+        }
 
-	fmt.Printf("🚀 [EXEC] Bot: %s | CMD: %s | Arg: %s\n", botID, cmd, fullArgs)
+        // ⚡ 9️⃣ مین کمانڈ پارسنگ
+        msgWithoutPrefix := strings.TrimPrefix(bodyClean, prefix)
+        words := strings.Fields(msgWithoutPrefix)
+        if len(words) == 0 {
+            return
+        }
 
-	switch cmd {
-	case "setprefix":
-		if !isOwner(client, v.Info.Sender) { replyMessage(client, v, "❌ Only Owner can change the prefix."); return }
-		if fullArgs == "" { replyMessage(client, v, "⚠️ Usage: .setprefix !"); return }
-		updatePrefixDB(botID, fullArgs)
-		replyMessage(client, v, fmt.Sprintf("✅ Prefix updated to [%s]", fullArgs))
+        cmd := strings.ToLower(words[0])
+        fullArgs := strings.TrimSpace(strings.Join(words[1:], " "))
 
-	case "menu", "help", "list":
-		react(client, v.Info.Chat, v.Info.ID, "📜"); sendMenu(client, v)
-	case "ping":
-		react(client, v.Info.Chat, v.Info.ID, "⚡"); sendPing(client, v)
-	case "id":
-		sendID(client, v)
-	case "owner":
-		sendOwner(client, v)
-	case "listbots":
-		sendBotsList(client, v)
-	case "data":
-		replyMessage(client, v, "╔════════════════╗\n║ 📂 DATA STATUS\n╠════════════════╣\n║ ✅ System Active\n╚════════════════╝")
-	case "alwaysonline":
-		toggleAlwaysOnline(client, v)
-	case "autoread":
-		toggleAutoRead(client, v)
-	case "autoreact":
-		toggleAutoReact(client, v)
-	case "autostatus":
-		toggleAutoStatus(client, v)
-	case "statusreact":
-		toggleStatusReact(client, v)
-	case "addstatus":
-		handleAddStatus(client, v, words[1:])
-	case "delstatus":
-		handleDelStatus(client, v, words[1:])
-	case "liststatus":
-		handleListStatus(client, v)
-	case "readallstatus":
-		handleReadAllStatus(client, v)
-	case "mode":
-		handleMode(client, v, words[1:])
-	case "antilink":
-		startSecuritySetup(client, v, "antilink")
-	case "antipic":
-		startSecuritySetup(client, v, "antipic")
-	case "antivideo":
-		startSecuritySetup(client, v, "antivideo")
-	case "antisticker":
-		startSecuritySetup(client, v, "antisticker")
-	case "kick":
-		handleKick(client, v, words[1:])
-	case "add":
-		handleAdd(client, v, words[1:])
-	case "promote":
-		handlePromote(client, v, words[1:])
-	case "demote":
-		handleDemote(client, v, words[1:])
-	case "tagall":
-		handleTagAll(client, v, words[1:])
-	case "hidetag":
-		handleHideTag(client, v, words[1:])
-	case "group":
-		handleGroup(client, v, words[1:])
-	case "del", "delete":
-		handleDelete(client, v)
-	case "toimg": 
-	    handleToImg(client, v)
-    // 🔍 اپنی commands.go میں یہ حصہ ڈھونڈیں اور بدل دیں
-    case "tovideo":
-        handleToMedia(client, v, false) // ✅ تیسرا پیرامیٹر 'false' ایڈ کریں (سادہ ویڈیو کے لیے)
+        if !canExecute(client, v, cmd) {
+            return
+        }
 
-    case "togif":
-        handleToMedia(client, v, true)  // ✅ یہاں 'true' ایڈ کریں (خودکار پلے ہونے والے GIF کے لیے)
-    case "s", "sticker": 
-        handleToSticker(client, v)
-	case "tourl":
-		handleToURL(client, v)
-	case "translate", "tr":
-		handleTranslate(client, v, words[1:])
-	case "vv":
-		handleVV(client, v)
-	case "sd":
-		handleSessionDelete(client, v, words[1:])
-	case "yts":
-		handleYTS(client, v, fullArgs)
+        fmt.Printf("🚀 [ASYNC EXEC] Bot: %s | CMD: %s | Arg: %s\n", botID, cmd, fullArgs)
 
-	// 📺 یوٹیوب ماسٹر کمانڈ (Fixed Case)
-	case "yt", "ytmp4", "ytmp3", "ytv", "yta", "youtube":
-		if fullArgs == "" {
-			replyMessage(client, v, "⚠️ *Usage:* .yt [YouTube Link]")
-			return
-		}
-		// لنک کی تصدیق کے لیے صرف عارضی طور پر Lower کریں
-		if strings.Contains(strings.ToLower(fullArgs), "youtu") {
-			handleYTDownloadMenu(client, v, fullArgs) // اصل Case والا لنک جائے گا
-		} else {
-			replyMessage(client, v, "❌ Please provide a valid YouTube link.")
-		}
+        // 🔥 THE SWITCH: ہر کیس اب مین تھریڈ کو بلاک نہیں کرے گا کیونکہ یہ پورا بلاک `go func` میں ہے
+        switch cmd {
+        case "setprefix":
+            if !isOwner(client, v.Info.Sender) {
+                replyMessage(client, v, "❌ Only Owner can change the prefix.")
+                return
+            }
+            if fullArgs == "" {
+                replyMessage(client, v, "⚠️ Usage: .setprefix !")
+                return
+            }
+            updatePrefixDB(botID, fullArgs)
+            replyMessage(client, v, fmt.Sprintf("✅ Prefix updated to [%s]", fullArgs))
 
-	case "fb", "facebook":
-		handleFacebook(client, v, fullArgs)
-	case "ig", "insta", "instagram":
-		handleInstagram(client, v, fullArgs)
-	case "tt", "tiktok":
-		handleTikTok(client, v, fullArgs)
-	case "tw", "x", "twitter":
-		handleTwitter(client, v, fullArgs)
-	case "pin", "pinterest":
-		handlePinterest(client, v, fullArgs)
-	case "threads":
-		handleThreads(client, v, fullArgs)
-	case "snap", "snapchat":
-		handleSnapchat(client, v, fullArgs)
-	case "reddit":
-		handleReddit(client, v, fullArgs)
-	case "twitch":
-		handleTwitch(client, v, fullArgs)
-	case "dm", "dailymotion":
-		handleDailyMotion(client, v, fullArgs)
-	case "vimeo":
-		handleVimeo(client, v, fullArgs)
-	case "rumble":
-		handleRumble(client, v, fullArgs)
-	case "bilibili":
-		handleBilibili(client, v, fullArgs)
-	case "douyin":
-		handleDouyin(client, v, fullArgs)
-	case "kwai":
-		handleKwai(client, v, fullArgs)
-	case "bitchute":
-		handleBitChute(client, v, fullArgs)
-	case "sc", "soundcloud":
-		handleSoundCloud(client, v, fullArgs)
-	case "spotify":
-		handleSpotify(client, v, fullArgs)
-	case "apple", "applemusic":
-		handleAppleMusic(client, v, fullArgs)
-	case "deezer":
-		handleDeezer(client, v, fullArgs)
-	case "tidal":
-		handleTidal(client, v, fullArgs)
-	case "mixcloud":
-		handleMixcloud(client, v, fullArgs)
-	case "napster":
-		handleNapster(client, v, fullArgs)
-	case "bandcamp":
-		handleBandcamp(client, v, fullArgs)
-	case "imgur":
-		handleImgur(client, v, fullArgs)
-	case "giphy":
-		handleGiphy(client, v, fullArgs)
-	case "flickr":
-		handleFlickr(client, v, fullArgs)
-	case "9gag":
-		handle9Gag(client, v, fullArgs)
-	case "ifunny":
-		handleIfunny(client, v, fullArgs)
-	case "stats", "server", "dashboard":
-		handleServerStats(client, v)
-	case "speed", "speedtest":
-		handleSpeedTest(client, v)
-	case "ss", "screenshot":
-		handleScreenshot(client, v, fullArgs)
-    case "ai", "ask", "gpt":
-        handleAI(client, v, fullArgs, cmd) // یہاں 'cmd' کا اضافہ کیا گیا ہے
-	case "imagine", "img", "draw":
-		handleImagine(client, v, fullArgs)
-	case "google", "search":
-		handleGoogle(client, v, fullArgs)
-	case "weather":
-		handleWeather(client, v, fullArgs)
-	case "remini", "upscale", "hd":
-		handleRemini(client, v)
-	case "removebg", "rbg":
-		handleRemoveBG(client, v)
-	case "fancy", "style":
-		handleFancy(client, v, fullArgs)
-	case "toptt", "voice":
-		handleToPTT(client, v)
-	case "ted":
-		handleTed(client, v, fullArgs)
-	case "steam":
-		handleSteam(client, v, fullArgs)
-	case "archive":
-		handleArchive(client, v, fullArgs)
-	case "git", "github":
-		handleGithub(client, v, fullArgs)
-	case "dl", "download", "mega":
-		handleMega(client, v, fullArgs)
-	}
+        case "menu", "help", "list":
+            react(client, v.Info.Chat, v.Info.ID, "📜")
+            sendMenu(client, v)
+        case "ping":
+            react(client, v.Info.Chat, v.Info.ID, "⚡")
+            sendPing(client, v)
+        case "id":
+            sendID(client, v)
+        case "owner":
+            sendOwner(client, v)
+        case "listbots":
+            sendBotsList(client, v)
+        case "data":
+            replyMessage(client, v, "╔════════════════╗\n║ 📂 DATA STATUS\n╠════════════════╣\n║ ✅ System Active\n╚════════════════╝")
+        case "alwaysonline":
+            toggleAlwaysOnline(client, v)
+        case "autoread":
+            toggleAutoRead(client, v)
+        case "autoreact":
+            toggleAutoReact(client, v)
+        case "autostatus":
+            toggleAutoStatus(client, v)
+        case "statusreact":
+            toggleStatusReact(client, v)
+        case "addstatus":
+            handleAddStatus(client, v, words[1:])
+        case "delstatus":
+            handleDelStatus(client, v, words[1:])
+        case "liststatus":
+            handleListStatus(client, v)
+        case "readallstatus":
+            handleReadAllStatus(client, v)
+        case "mode":
+            handleMode(client, v, words[1:])
+        case "antilink":
+            startSecuritySetup(client, v, "antilink")
+        case "antipic":
+            startSecuritySetup(client, v, "antipic")
+        case "antivideo":
+            startSecuritySetup(client, v, "antivideo")
+        case "antisticker":
+            startSecuritySetup(client, v, "antisticker")
+        case "kick":
+            handleKick(client, v, words[1:])
+        case "add":
+            handleAdd(client, v, words[1:])
+        case "promote":
+            handlePromote(client, v, words[1:])
+        case "demote":
+            handleDemote(client, v, words[1:])
+        case "tagall":
+            handleTagAll(client, v, words[1:])
+        case "hidetag":
+            handleHideTag(client, v, words[1:])
+        case "group":
+            handleGroup(client, v, words[1:])
+        case "del", "delete":
+            handleDelete(client, v)
+        case "toimg":
+            handleToImg(client, v)
+        case "tovideo":
+            handleToMedia(client, v, false)
+        case "togif":
+            handleToMedia(client, v, true)
+        case "s", "sticker":
+            handleToSticker(client, v)
+        case "tourl":
+            handleToURL(client, v)
+        case "translate", "tr":
+            handleTranslate(client, v, words[1:])
+        case "vv":
+            handleVV(client, v)
+        case "sd":
+            handleSessionDelete(client, v, words[1:])
+        case "yts":
+            handleYTS(client, v, fullArgs)
+
+        // 📺 YouTube
+        case "yt", "ytmp4", "ytmp3", "ytv", "yta", "youtube":
+            if fullArgs == "" {
+                replyMessage(client, v, "⚠️ *Usage:* .yt [YouTube Link]")
+                return
+            }
+            if strings.Contains(strings.ToLower(fullArgs), "youtu") {
+                handleYTDownloadMenu(client, v, fullArgs)
+            } else {
+                replyMessage(client, v, "❌ Please provide a valid YouTube link.")
+            }
+
+        // 🌐 Other Social Media (Heavy Tasks)
+        case "fb", "facebook":
+            handleFacebook(client, v, fullArgs)
+        case "ig", "insta", "instagram":
+            handleInstagram(client, v, fullArgs)
+        case "tt", "tiktok":
+            handleTikTok(client, v, fullArgs)
+        case "tw", "x", "twitter":
+            handleTwitter(client, v, fullArgs)
+        case "pin", "pinterest":
+            handlePinterest(client, v, fullArgs)
+        case "threads":
+            handleThreads(client, v, fullArgs)
+        case "snap", "snapchat":
+            handleSnapchat(client, v, fullArgs)
+        case "reddit":
+            handleReddit(client, v, fullArgs)
+        case "twitch":
+            handleTwitch(client, v, fullArgs)
+        case "dm", "dailymotion":
+            handleDailyMotion(client, v, fullArgs)
+        case "vimeo":
+            handleVimeo(client, v, fullArgs)
+        case "rumble":
+            handleRumble(client, v, fullArgs)
+        case "bilibili":
+            handleBilibili(client, v, fullArgs)
+        case "douyin":
+            handleDouyin(client, v, fullArgs)
+        case "kwai":
+            handleKwai(client, v, fullArgs)
+        case "bitchute":
+            handleBitChute(client, v, fullArgs)
+        case "sc", "soundcloud":
+            handleSoundCloud(client, v, fullArgs)
+        case "spotify":
+            handleSpotify(client, v, fullArgs)
+        case "apple", "applemusic":
+            handleAppleMusic(client, v, fullArgs)
+        case "deezer":
+            handleDeezer(client, v, fullArgs)
+        case "tidal":
+            handleTidal(client, v, fullArgs)
+        case "mixcloud":
+            handleMixcloud(client, v, fullArgs)
+        case "napster":
+            handleNapster(client, v, fullArgs)
+        case "bandcamp":
+            handleBandcamp(client, v, fullArgs)
+        case "imgur":
+            handleImgur(client, v, fullArgs)
+        case "giphy":
+            handleGiphy(client, v, fullArgs)
+        case "flickr":
+            handleFlickr(client, v, fullArgs)
+        case "9gag":
+            handle9Gag(client, v, fullArgs)
+        case "ifunny":
+            handleIfunny(client, v, fullArgs)
+        case "stats", "server", "dashboard":
+            handleServerStats(client, v)
+        case "speed", "speedtest":
+            handleSpeedTest(client, v)
+        case "ss", "screenshot":
+            handleScreenshot(client, v, fullArgs)
+        case "ai", "ask", "gpt":
+            handleAI(client, v, fullArgs, cmd)
+        case "imagine", "img", "draw":
+            handleImagine(client, v, fullArgs)
+        case "google", "search":
+            handleGoogle(client, v, fullArgs)
+        case "weather":
+            handleWeather(client, v, fullArgs)
+        case "remini", "upscale", "hd":
+            handleRemini(client, v)
+        case "removebg", "rbg":
+            handleRemoveBG(client, v)
+        case "fancy", "style":
+            handleFancy(client, v, fullArgs)
+        case "toptt", "voice":
+            handleToPTT(client, v)
+        case "ted":
+            handleTed(client, v, fullArgs)
+        case "steam":
+            handleSteam(client, v, fullArgs)
+        case "archive":
+            handleArchive(client, v, fullArgs)
+        case "git", "github":
+            handleGithub(client, v, fullArgs)
+        case "dl", "download", "mega":
+            handleMega(client, v, fullArgs)
+        }
+    }() // 🔚 End of Command Execution Goroutine
 }
+
+// ✅ Helper function to recover from panics inside goroutines
+func recovery() {
+    if r := recover(); r != nil {
+        fmt.Println("⚠️ Recovered from background panic:", r)
+    }
+}
+
 
 // 🚀 ہیلپرز اور اسپیڈ آپٹیمائزڈ فنکشنز
 
