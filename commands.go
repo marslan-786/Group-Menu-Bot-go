@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
     "net/http"
+    "go.mau.fi/whatsmeow"
 	"github.com/showwin/speedtest-go/speedtest"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
