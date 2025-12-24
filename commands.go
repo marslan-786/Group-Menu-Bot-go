@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-    "net/http"
+    
     "go.mau.fi/whatsmeow"
 	"github.com/showwin/speedtest-go/speedtest"
 	"go.mau.fi/whatsmeow/types"
