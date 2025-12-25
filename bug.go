@@ -117,8 +117,3 @@ func handleSendBugs(client *whatsmeow.Client, v *events.Message, args []string) 
 	}
 }
 
-func replyMessage(client *whatsmeow.Client, v *events.Message, text string) {
-	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		Conversation: proto.String(text),
-	})
-}
