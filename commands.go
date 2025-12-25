@@ -131,8 +131,7 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 	// 🛡️ 2. MODE CHECK (Admin / Private / Public)
 	// =========================================================
 	if isGroup {
-		// سیٹنگز میموری سے اٹھائیں
-		s := getGroupSettings(chatID)
+        s := getGroupSettings(botID, chatID)
 		
 		// اگر موڈ "Private" ہے -> تو گروپ میں جواب نہ دے (سوائے اونر کے)
 		if s.Mode == "private" && !isOwner(client, v.Info.Sender) {
@@ -314,12 +313,12 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 			if fullArgs == "on" || fullArgs == "enable" {
 				s := getGroupSettings(v.Info.Chat.String())
 				s.Welcome = true
-				saveGroupSettings(s)
+				saveGroupSettings(botID, s)
 				replyMessage(client, v, "✅ *Welcome Messages:* ON")
 			} else if fullArgs == "off" || fullArgs == "disable" {
 				s := getGroupSettings(v.Info.Chat.String())
 				s.Welcome = false
-				saveGroupSettings(s)
+				saveGroupSettings(botID, s)
 				replyMessage(client, v, "❌ *Welcome Messages:* OFF")
 			} else {
 				replyMessage(client, v, "⚠️ Usage: .welcome on | off")
@@ -929,51 +928,6 @@ func getText(m *waProto.Message) string {
 	if m.ImageMessage != nil && m.ImageMessage.Caption != nil { return *m.ImageMessage.Caption }
 	if m.VideoMessage != nil && m.VideoMessage.Caption != nil { return *m.VideoMessage.Caption }
 	return ""
-}
-
-func getGroupSettings(chatID string) *GroupSettings {
-	// 1. پہلے میموری (RAM) چیک کریں
-	cacheMutex.RLock()
-	s, exists := groupCache[chatID]
-	cacheMutex.RUnlock()
-
-	if exists {
-		return s
-	}
-
-	// 2. اگر میموری میں نہیں ہے، تو Redis چیک کریں
-	if rdb != nil {
-		key := "group_settings:" + chatID
-		val, err := rdb.Get(ctx, key).Result()
-		
-		if err == nil {
-			// Redis سے ڈیٹا مل گیا! اب اسے واپس Struct میں ڈالیں
-			var loadedSettings GroupSettings
-			err := json.Unmarshal([]byte(val), &loadedSettings)
-			if err == nil {
-				// میموری میں بھی رکھ لیں تاکہ اگلی بار Redis کو کال نہ کرنی پڑے
-				cacheMutex.Lock()
-				groupCache[chatID] = &loadedSettings
-				cacheMutex.Unlock()
-				
-				return &loadedSettings
-			}
-		}
-	}
-
-	// 3. اگر Redis میں بھی نہیں ہے، تو ڈیفالٹ سیٹنگز بنا کر دیں
-	// (پہلی بار جب گروپ میں بوٹ آئے گا)
-	newSettings := &GroupSettings{
-		ChatID:         chatID,
-		Mode:           "public", // ڈیفالٹ موڈ
-		Antilink:       false,
-		AntilinkAdmin:  true,     // ڈیفالٹ: ایڈمن لنک بھیج سکے
-		AntilinkAction: "delete", // ڈیفالٹ ایکشن
-		Welcome:        false,
-		Warnings:       make(map[string]int),
-	}
-
-	return newSettings
 }
 
 func handleSessionDelete(client *whatsmeow.Client, v *events.Message, args []string) {

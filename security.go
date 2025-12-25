@@ -346,7 +346,7 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 			})
 		}
 
-		saveGroupSettings(s)
+		saveGroupSettings(botID, s)
 	}
 }
 // مثال کے طور پر
@@ -509,7 +509,7 @@ func handleSetupResponse(client *whatsmeow.Client, v *events.Message) {
 		}
 
 		applySecurityFinal(s, state.Type, true)
-		saveGroupSettings(s)
+		saveGroupSettings(botID, s)
 		delete(setupMap, quotedID) // سیشن ختم
 
 		adminBypass := "YES ✅"; if !s.AntilinkAdmin { adminBypass = "NO ❌" }

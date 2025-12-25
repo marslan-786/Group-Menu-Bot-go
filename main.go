@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql" // ✅ SQL پیکیج لازمی ہے
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,8 +15,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	_ "github.com/lib/pq"             // PostgreSQL Driver
-	_ "github.com/mattn/go-sqlite3"   // SQLite Driver (Backup only)
+	_ "github.com/lib/pq" // ✅ صرف Postgres ڈرائیور رکھا ہے
+	// SQLite ڈرائیور یہاں سے مکمل ہٹا دیا گیا ہے 🗑️
 	"github.com/redis/go-redis/v9"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/store"
@@ -46,25 +47,12 @@ var (
 	ytDownloadCache = make(map[string]YTState)
 )
 
-// main.go کے اندر کہیں بھی یہ فنکشن بنا لیں
-func loadGlobalSettings() {
-	if rdb == nil { return }
-	
-	val, err := rdb.Get(ctx, "bot_global_settings").Result()
-	if err == nil {
-		dataMutex.Lock()
-		json.Unmarshal([]byte(val), &data) // پرانی سیٹنگز واپس آ گئیں
-		dataMutex.Unlock()
-		fmt.Println("✅ [REDIS] Global Bot Settings Loaded (AutoStatus, etc.)")
-	}
-}
-
 // ✅ 1. ریڈیس کنکشن
 func initRedis() {
 	redisURL := os.Getenv("REDIS_URL")
 
 	if redisURL == "" {
-		fmt.Println("⚠️ [REDIS] Warning: REDIS_URL is empty! Falling back to localhost...")
+		fmt.Println("⚠️ [REDIS] Warning: REDIS_URL is empty! Defaulting to localhost...")
 		redisURL = "redis://localhost:6379"
 	} else {
 		fmt.Println("📡 [REDIS] Connecting to Redis Cloud...")
@@ -84,65 +72,61 @@ func initRedis() {
 	fmt.Println("🚀 [REDIS] Connection Established!")
 }
 
-func main() {
-	fmt.Println("🚀 IMPOSSIBLE BOT | STARTING ON POSTGRESQL")
+// ✅ 2. گلوبل سیٹنگز لوڈ کرنا (تاکہ ری اسٹارٹ پر سیٹنگز یاد رہیں)
+func loadGlobalSettings() {
+	if rdb == nil { return }
+	val, err := rdb.Get(ctx, "bot_global_settings").Result()
+	if err == nil {
+		dataMutex.Lock()
+		json.Unmarshal([]byte(val), &data)
+		dataMutex.Unlock()
+		fmt.Println("✅ [SETTINGS] Bot Settings Restored from Redis")
+	}
+}
 
-	// 1. ریڈیس اور اپ ٹائم
+func main() {
+	fmt.Println("🚀 IMPOSSIBLE BOT | STARTING (POSTGRES ONLY)")
+
+	// 1. سروسز اسٹارٹ کریں
 	initRedis()
 	loadPersistentUptime()
+	loadGlobalSettings() // ✅ سیٹنگز لوڈ کریں
 	startPersistentUptimeTracker()
 
-	// 2. ڈیٹا بیس کنکشن (PostgreSQL Priority)
+	// 2. ڈیٹا بیس کنکشن (صرف Postgres)
 	dbURL := os.Getenv("DATABASE_URL")
-	var dbType string
-
-	if dbURL != "" {
-		// ✅ اگر DATABASE_URL موجود ہے تو لازمی Postgres یوز ہوگا
-		dbType = "postgres"
-		fmt.Println("🐘 [DATABASE] Detected DATABASE_URL. Switching to PostgreSQL Mode.")
-	} else {
-		// ⚠️ اگر نہیں ہے تو مجبوری میں SQLite
-		dbType = "sqlite3"
-		dbURL = "file:impossible.db?_foreign_keys=on"
-		fmt.Println("⚠️ [DATABASE] DATABASE_URL not found! Falling back to legacy SQLite.")
+	if dbURL == "" {
+		// اگر URL نہیں ہے تو کریش کر جاؤ (کیونکہ SQLite کا آپشن ختم کر دیا ہے)
+		log.Fatal("❌ FATAL ERROR: DATABASE_URL environment variable is missing! This bot requires PostgreSQL.")
 	}
 
-	dbLog := waLog.Stdout("Database", "ERROR", true)
-	var err error
-	
-	// کنٹینر بنائیں
-	container, err = sqlstore.New(context.Background(), dbType, dbURL, dbLog)
+	fmt.Println("🐘 [DATABASE] Connecting to PostgreSQL...")
+
+	// ⚡ Raw DB کنکشن کھولیں
+	rawDB, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		log.Fatalf("❌ DB Connection Error: %v", err)
+		log.Fatalf("❌ Failed to open Postgres connection: %v", err)
 	}
 
-	// ⚡ Database Tuning (تیز رفتاری کے لئے)
-	db := container.GetDatabase()
-	if db != nil {
-		if dbType == "postgres" {
-			// ✅ Postgres کے لئے ہائی پرفارمنس سیٹنگز
-			// اب 14 بوٹس ایک ساتھ 20 کنکشن کھول سکتے ہیں، کوئی "Lock" ایرر نہیں آئے گا
-			db.SetMaxOpenConns(20) 
-			db.SetMaxIdleConns(5)
-			db.SetConnMaxLifetime(30 * time.Minute)
-			fmt.Println("✅ [TUNING] Optimized DB Pool for High Concurrency (Postgres)")
-		} else {
-			// ⚠️ SQLite کے لئے مجبوری (1 کنکشن)
-			db.SetMaxOpenConns(1)
-			fmt.Println("⚠️ [TUNING] Restricted DB Pool for File Safety (SQLite)")
-		}
-	}
+	// ⚡ Connection Pooling (تیز رفتاری کے لیے)
+	rawDB.SetMaxOpenConns(20) // 14+ بوٹس کے لیے بہترین
+	rawDB.SetMaxIdleConns(5)
+	rawDB.SetConnMaxLifetime(30 * time.Minute)
+	fmt.Println("✅ [TUNING] Postgres Pool Configured (Max: 20 Connections)")
 
+	// 3. WhatsMeow کنٹینر بنائیں
+	dbLog := waLog.Stdout("Database", "ERROR", true)
+	container = sqlstore.NewWithDB(rawDB, "postgres", dbLog)
 	dbContainer = container
 
-	// 3. ملٹی بوٹ سسٹم شروع کریں
+	// 4. ملٹی بوٹ سسٹم شروع کریں
 	fmt.Println("🤖 Initializing Multi-Bot System from Database...")
 	StartAllBots(container)
 
-	// 4. باقی سسٹمز
+	// 5. باقی سسٹمز
 	InitLIDSystem()
 
-	// 5. ویب سرور روٹس
+	// 6. ویب سرور روٹس
 	http.HandleFunc("/", serveHTML)
 	http.HandleFunc("/pic.png", servePicture)
 	http.HandleFunc("/ws", handleWebSocket)
@@ -164,12 +148,14 @@ func main() {
 		}
 	}()
 
-	// 6. شٹ ڈاؤن ہینڈلنگ
+	// 7. شٹ ڈاؤن ہینڈلنگ
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 
 	fmt.Println("\n🛑 Shutting down system...")
+	
+	// بوٹس کو صاف طریقے سے بند کریں
 	clientsMutex.Lock()
 	for id, activeClient := range activeClients {
 		fmt.Printf("🔌 Disconnecting Bot: %s\n", id)
@@ -177,14 +163,14 @@ func main() {
 	}
 	clientsMutex.Unlock()
 	
-	// کنکشن بند کریں
-	if db != nil {
-		db.Close()
+	// ڈیٹا بیس بند کریں
+	if rawDB != nil {
+		rawDB.Close()
 	}
 	fmt.Println("👋 Goodbye!")
 }
 
-// ✅ ⚡ بوٹ کنیکٹ (سیم لاجک)
+// ✅ ⚡ بوٹ کنیکٹ (Same logic, slightly cleaned up)
 func ConnectNewSession(device *store.Device) {
 	rawID := device.ID.User
 	cleanID := getCleanID(rawID)
@@ -193,7 +179,6 @@ func ConnectNewSession(device *store.Device) {
 	botCleanIDCache[rawID] = cleanID
 	clientsMutex.Unlock()
 
-	// ریڈیس سے پریفکس
 	p, err := rdb.Get(ctx, "prefix:"+cleanID).Result()
 	if err != nil {
 		p = "."
@@ -242,7 +227,7 @@ func updatePrefixDB(botID string, newPrefix string) {
 	}
 }
 
-// ... (باقی ویب روٹس سیم ہیں، انہیں تبدیل کرنے کی ضرورت نہیں) ...
+// ... (باقی ویب روٹس سیم ہیں) ...
 
 func serveHTML(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "web/index.html")
@@ -422,6 +407,7 @@ func handlePairAPI(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePairAPILegacy(w http.ResponseWriter, r *http.Request) {
+	// (یہ فنکشن بھی وہی Postgres logic استعمال کرے گا کیونکہ container اب صرف Postgres ہے)
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		http.Error(w, `{"error":"Invalid URL"}`, 400)
@@ -570,26 +556,74 @@ func SetGlobalClient(c *whatsmeow.Client) {
 	globalClient = c
 }
 
-func saveGroupSettings(s *GroupSettings) {
-	// 1. پہلے میموری (RAM) میں اپڈیٹ کریں (فاسٹ ایکسیس کے لیے)
+// ⚡ سیٹنگز حاصل کرنے کا فنکشن (اب بوٹ آئی ڈی بھی مانگے گا)
+func getGroupSettings(botID, chatID string) *GroupSettings {
+	// یونیک کی بنائیں (تاکہ ہر بوٹ کا ڈیٹا الگ رہے)
+	// Key Format: "923001234567:1203630...@g.us"
+	uniqueKey := botID + ":" + chatID
+
+	// 1. پہلے میموری (RAM) چیک کریں
+	cacheMutex.RLock()
+	s, exists := groupCache[uniqueKey]
+	cacheMutex.RUnlock()
+
+	if exists {
+		return s
+	}
+
+	// 2. اگر میموری میں نہیں ہے، تو Redis چیک کریں
+	if rdb != nil {
+		// Redis Key: "group_settings:92300...:12036..."
+		redisKey := "group_settings:" + uniqueKey
+		val, err := rdb.Get(ctx, redisKey).Result()
+		
+		if err == nil {
+			var loadedSettings GroupSettings
+			err := json.Unmarshal([]byte(val), &loadedSettings)
+			if err == nil {
+				// میموری میں اپڈیٹ کریں (Composite Key کے ساتھ)
+				cacheMutex.Lock()
+				groupCache[uniqueKey] = &loadedSettings
+				cacheMutex.Unlock()
+				
+				return &loadedSettings
+			}
+		}
+	}
+
+	// 3. اگر کہیں نہیں ہے تو ڈیفالٹ بنائیں
+	newSettings := &GroupSettings{
+		ChatID:         chatID,
+		Mode:           "public", 
+		Antilink:       false,
+		AntilinkAdmin:  true,     
+		AntilinkAction: "delete", 
+		Welcome:        false,
+		Warnings:       make(map[string]int),
+	}
+
+	return newSettings
+}
+
+// ⚡ سیٹنگز محفوظ کرنے کا فنکشن (بوٹ آئی ڈی کے ساتھ)
+func saveGroupSettings(botID string, s *GroupSettings) {
+	uniqueKey := botID + ":" + s.ChatID
+
+	// 1. میموری (RAM) میں اپڈیٹ کریں
 	cacheMutex.Lock()
-	groupCache[s.ChatID] = s
+	groupCache[uniqueKey] = s
 	cacheMutex.Unlock()
 
-	// 2. اب Redis میں ہمیشہ کے لیے سیو کریں
+	// 2. Redis میں محفوظ کریں (الگ کی کے ساتھ)
 	if rdb != nil {
-		// ڈیٹا کو JSON میں تبدیل کریں
 		jsonData, err := json.Marshal(s)
 		if err == nil {
-			// Redis Key: "group_settings:12036..."
-			key := "group_settings:" + s.ChatID
+			redisKey := "group_settings:" + uniqueKey
 			
-			// Redis میں سیو کریں (0 کا مطلب ہے کبھی ایکسپائر نہ ہو)
-			err := rdb.Set(ctx, key, jsonData, 0).Err()
+			// Redis میں سیو کریں (No Expiry)
+			err := rdb.Set(ctx, redisKey, jsonData, 0).Err()
 			if err != nil {
-				fmt.Printf("⚠️ [REDIS ERROR] Failed to save settings for %s: %v\n", s.ChatID, err)
-			} else {
-				// fmt.Println("✅ Settings saved to Redis") // (Optional Log)
+				fmt.Printf("⚠️ [REDIS ERROR] Failed to save settings: %v\n", err)
 			}
 		}
 	}
