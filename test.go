@@ -62,17 +62,12 @@ func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
 		return
 	}
 
+	// ہم صرف ID استعمال کریں گے، نام کی ضرورت نہیں (Error Fixed)
 	targetJID := metadata.ID
 	
-	// --- FIX IS HERE: metadata.Name.Text instead of ThreadMetadata ---
-	channelName := "Unknown"
-	if metadata.Name != nil {
-		channelName = metadata.Name.Text
-	}
+	replyToUser(client, userChat, fmt.Sprintf("✅ ٹارگٹ لاکڈ!\nID: %s\nMsgID: %s\nٹیسٹ شاٹ بھیج رہا ہوں...", targetJID, msgID))
 
-	replyToUser(client, userChat, fmt.Sprintf("✅ چینل: %s\nID: %s\n ٹیسٹ شاٹ لے رہا ہوں...", channelName, msgID))
-
-	// 2. TEST SHOT
+	// 2. TEST SHOT (پہلے ایک ری ایکٹ ٹیسٹ)
 	testReaction := &waProto.Message{
 		ReactionMessage: &waProto.ReactionMessage{
 			Key: &waProto.MessageKey{
@@ -85,20 +80,22 @@ func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
 		},
 	}
 
+	// رسپانس چیک کریں
 	resp, err := client.SendMessage(context.Background(), targetJID, testReaction)
 	if err != nil {
 		fmt.Println("Reaction Error:", err)
+		// اگر یہاں ایرر آیا تو آپ کو واٹس ایپ پر پتہ چل جائے گا
 		replyToUser(client, userChat, fmt.Sprintf("❌ ری ایکٹ فیل ہوگیا!\nوجہ: %v", err))
 		return
 	}
 
 	fmt.Println("Test Shot Success. Server ID:", resp.ID)
-	replyToUser(client, userChat, "✅ ٹیسٹ کامیاب! اب فلڈ کر رہا ہوں... 🚀")
+	replyToUser(client, userChat, "✅ ٹیسٹ کامیاب! 🚀\nاب 50 کا اٹیک شروع...")
 
-	// 3. FLOOD
+	// 3. FLOOD (اصلی کام)
 	performFlood(client, targetJID, msgID)
 	
-	replyToUser(client, userChat, "✅ مشن مکمل۔")
+	replyToUser(client, userChat, "✅ مشن مکمل۔ رزلٹ چیک کریں۔")
 }
 
 func performFlood(client *whatsmeow.Client, chatJID types.JID, msgID string) {
