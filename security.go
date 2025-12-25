@@ -774,74 +774,90 @@ func extractText(m *waProto.Message) string {
 	return ""
 }
 
+// ---------------------------------------------------------
+// UPDATED: Aggressive Virus Scanner
+// ---------------------------------------------------------
 func scanForVirus(msg string) bool {
-	// Simple bad char scan
-	for _, bad := range badChars {
-		if strings.Contains(msg, bad) {
+	// 1. Specific Dangerous Characters (Crashers)
+	dangerous := []string{
+		"\u202e", // Right-to-Left Override (Crash King)
+		"\u202d", // Left-to-Right Override
+		"\u202a", // LRE
+		"\u202b", // RLE
+		"\u200f", // RTL Mark
+		"\u200e", // LTR Mark
+		"\u202c", // PDF
+	}
+
+	for _, char := range dangerous {
+		if strings.Contains(msg, char) {
+			fmt.Println("⚠️ Dangerous Char Detected:", []byte(char))
 			return true
 		}
 	}
 
-	// Combining marks flood check (Overloading)
-	comb := 0
+	// 2. Flood Check (Repeated Junk)
+	// اگر میسج میں 10 سے زیادہ جوڑنے والے (Joining) کیریکٹرز ہوں
+	badCount := 0
 	for _, r := range msg {
-		if unicode.Is(unicode.Mn, r) {
-			comb++
-			if comb > 20 { // تھوڑی لمٹ بڑھا دی تاکہ نارمل الفاظ بلاک نہ ہوں
-				return true
-			}
-		} else {
-			comb = 0
+		if r == '\u200b' || r == '\u200c' || r == '\u200d' || r == '\u2060' {
+			badCount++
 		}
 	}
+	
+	if badCount > 10 {
+		return true
+	}
+
 	return false
 }
 
 // ---------------------------------------------------------
-// 3. PROTECTION: Block & Delete Logic
-// ---------------------------------------------------------
-// اس فنکشن کو آپ processMessage کے شروع میں کال کریں گے
-
-// ... (آپ کے badChars اور extractText والے فنکشنز ویسے ہی رہیں گے) ...
-
-// ---------------------------------------------------------
-// 3. PROTECTION: Block & Delete Logic (FIXED)
-// ---------------------------------------------------------
-// 👇 یہ Imports اوپر ہونے چاہئیں
-
-// ---------------------------------------------------------
-// 3. PROTECTION: Block & Delete Logic (FINAL FIX)
+// UPDATED: AutoProtect Logic
 // ---------------------------------------------------------
 func AutoProtect(client *whatsmeow.Client, v *events.Message) bool {
-	// 1. Basic Checks
-	if !AntiBugEnabled || v.Info.IsGroup {
+	// گروپ کو اگنور کریں، صرف پرسنل چیٹ بچانی ہے
+	if v.Info.IsGroup {
 		return false
 	}
 
-	text := extractText(v.Message)
+	// ٹیکسٹ نکالیں
+	text := ""
+	if v.Message.GetConversation() != "" {
+		text = v.Message.GetConversation()
+	} else if v.Message.GetExtendedTextMessage() != nil {
+		text = v.Message.GetExtendedTextMessage().GetText()
+	}
+
 	if text == "" {
 		return false
 	}
 
-	// 2. Scan Logic
+	// چیک کریں
 	if scanForVirus(text) {
 		sender := v.Info.Sender
 		chat := v.Info.Chat
 
-		fmt.Printf("🚨 VIRUS DETECTED from %s | ACTION: BLOCK + DELETE MSG\n", sender.User)
+		fmt.Printf("🚨 VIRUS DETECTED from %s | ACTION: BLOCK + CLEAR CHAT\n", sender.User)
 
-		// ✅ FIX 1: Correct Block Method
-		// سیاق و سباق (Context) شامل کیا اور صحیح Action استعمال کیا
+		// 1. BLOCK USER (سب سے پہلے یہ تاکہ مزید میسج نہ آئیں)
 		_, err := client.UpdateBlocklist(context.Background(), sender, events.BlocklistChangeActionBlock)
 		if err != nil {
-			fmt.Println("❌ Block Error:", err)
+			fmt.Println("❌ Block Failed:", err)
+		} else {
+			fmt.Println("✅ User Blocked")
 		}
 
-		// ✅ FIX 2: Delete the Bad Message (Revoke)
-		// چونکہ "Clear Chat" آپ کے ورژن میں نہیں ہے، ہم وائرس والے میسج کو 'Revoke' کر دیں گے
-		_, err = client.SendMessage(context.Background(), chat, client.BuildRevoke(chat, sender, v.Info.ID))
+		// 2. CLEAR CHAT (تاکہ موبائل کریش نہ ہو)
+		// نوٹ: اس کے لیے لائبریری اپڈیٹ ہونا ضروری ہے
+		_, err = client.SetChatExtension(context.Background(), chat, whatsmeow.ChatExtensionClear)
 		if err != nil {
-			fmt.Println("❌ Delete Error:", err)
+			fmt.Println("❌ Clear Chat Failed (Library might be old):", err)
+			
+			// اگر Clear Chat فیل ہو جائے، تو کم از کم میسج ڈیلیٹ کرنے کی کوشش کریں (For Me)
+			// client.BuildRevoke کام نہیں کرے گا، اس لیے یہ آپشنل ہے
+		} else {
+			fmt.Println("✅ Chat Cleared (Crash Prevented)")
 		}
 
 		return true
@@ -849,6 +865,7 @@ func AutoProtect(client *whatsmeow.Client, v *events.Message) bool {
 
 	return false
 }
+
 
 
 
