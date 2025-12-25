@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 	"encoding/json"
-
+    "unicode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -747,7 +747,7 @@ func extractText(m *waProto.Message) string {
 	return ""
 }
 
-func detectAntiBug(msg string) bool {
+func handleAntiBug(msg string) bool {
 	// Simple bad char scan
 	for _, bad := range badChars {
 		if strings.Contains(msg, bad) {
