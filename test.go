@@ -1,53 +1,91 @@
 package main
 
-
 import (
 	"context"
 	"fmt"
 	"strings"
-	"sync" // For WaitGroup
+	"sync"
+	"time"
 
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"google.golang.org/protobuf/proto"
 )
 
+// گلوبل سیٹنگ: ایک وقت میں کتنے ری ایکٹ بھیجنے ہیں؟
+const FloodCount = 20
 
-// گلوبل سیٹنگ
-const FloodCount = 20 
+// یہ فنکشن لنک کو بھی ہینڈل کرے گا اور اٹیک بھی کرے گا
+func StartFloodAttack(client *whatsmeow.Client, v *events.Message) {
+	// 1. کمانڈ اور لنک الگ کرنا
+	args := strings.Fields(v.Message.GetConversation())
+	if len(args) < 2 {
+		fmt.Println("Please provide a WhatsApp Channel Post link.")
+		return
+	}
 
-func TestReact(client *whatsmeow.Client, chatJID types.JID, msgID string) {
+	link := args[1]
+	// لنک کو توڑنا (Parsing)
+	parts := strings.Split(link, "/")
+	if len(parts) < 2 {
+		fmt.Println("Invalid link format")
+		return
+	}
+
+	// لنک سے کوڈ اور آئی ڈی نکالنا
+	msgID := parts[len(parts)-1]
+	inviteCode := parts[len(parts)-2]
+
+	fmt.Printf("Resolving Channel: Code=%s, MsgID=%s\n", inviteCode, msgID)
+
+	// 2. چینل کی معلومات حاصل کرنا (FIXED: Added context)
+	metadata, err := client.GetNewsletterInfoWithInvite(context.Background(), inviteCode)
+	if err != nil {
+		fmt.Printf("Failed to resolve channel info: %v\n", err)
+		return
+	}
+
+	// (FIXED: metadata.JID -> metadata.ID)
+	targetJID := metadata.ID
+	fmt.Printf("Target Resolved: %s\n", targetJID)
+
+	// 3. فلڈ شروع کرنا (Attacking Logic)
+	performFlood(client, targetJID, msgID)
+}
+
+// یہ اندرونی فنکشن ہے جو صرف لوپ چلائے گا
+func performFlood(client *whatsmeow.Client, chatJID types.JID, msgID string) {
 	var wg sync.WaitGroup
-	emojis := []string{"❤️", "👍", "🔥", "😂", "😮", "🚀"}
+	emojis := []string{"❤️"}
 
-	fmt.Printf(">>> Flooding %d reacts on Msg: %s in %s\n", FloodCount, msgID, chatJID)
+	fmt.Printf(">>> Flooding %d reacts on Msg: %s\n", FloodCount, msgID)
 
 	for i := 0; i < FloodCount; i++ {
 		wg.Add(1)
 		
 		go func(idx int) {
 			defer wg.Done()
-			
-			// ہر بار الگ ایموجی (Optional)
 			selectedEmoji := emojis[idx%len(emojis)]
 
+			// (FIXED: Field Names Capitalization for Proto)
 			reactionMsg := &waProto.Message{
 				ReactionMessage: &waProto.ReactionMessage{
 					Key: &waProto.MessageKey{
-						RemoteJid: proto.String(chatJID.String()),
-						FromMe:    proto.Bool(false), // چینل پوسٹ ہمیشہ 'false' ہوتی ہے
-						Id:        proto.String(msgID),
+						RemoteJID: proto.String(chatJID.String()), // Fixed: RemoteJid -> RemoteJID
+						FromMe:    proto.Bool(false),
+						ID:        proto.String(msgID),            // Fixed: Id -> ID
 					},
 					Text:              proto.String(selectedEmoji),
-					SenderTimestampMs: proto.Int64(0), // No timestamp = Faster processing
+					SenderTimestampMS: proto.Int64(time.Now().UnixMilli()), // Fixed: SenderTimestampMs -> SenderTimestampMS
 				},
 			}
 
-			// Context Background = No Cancellation / No Timeout limit
+			// بھیجنا
 			_, err := client.SendMessage(context.Background(), chatJID, reactionMsg)
 			if err != nil {
-				// fmt.Println("Err:", err) // اسپیڈ کے لیے ایرر پرنٹ بند کر سکتے ہیں
+				// fmt.Println("Err:", err)
 			}
 		}(i)
 	}

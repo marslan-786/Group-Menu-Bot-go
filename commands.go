@@ -223,50 +223,8 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
             react(client, v.Info.Chat, v.Info.ID, "⚡")
             sendPing(client, v)
         case "testreact":
-	// 1. کمانڈ کے ٹکڑے کریں (Command Splitting)
-        	args := strings.Fields(v.Message.GetConversation()) // .Fields spaces ko handle krta h
-        	if len(args) < 2 {
-        		fmt.Println("Please provide a WhatsApp Channel Post link.")
-        		return
-        	}
-
-        	link := args[1]
-	// لنک فارمیٹ: https://whatsapp.com/channel/<code>/<message_id>
-	
-	// 2. لنک سے ڈیٹا نکالنا (Link Parsing)
-	// سلیش (/) کی بنیاد پر لنک کو توڑیں
-        	parts := strings.Split(link, "/")
-	
-        	if len(parts) < 2 {
-        		fmt.Println("Invalid link format")
-        		return
-        	}
-
-	// عام طور پر لنک کے آخر میں میسج آئی ڈی اور اس سے پہلے انوائٹ کوڈ ہوتا ہے
-        	msgID := parts[len(parts)-1]      // آخری حصہ (Message ID)
-        	inviteCode := parts[len(parts)-2] // سیکنڈ لاسٹ حصہ (Invite Code)
-
-        	fmt.Printf("Resolving Channel: Code=%s, MsgID=%s\n", inviteCode, msgID)
-
-	// 3. انوائٹ کوڈ سے اصلی JID حاصل کرنا (Get JID from Code)
-	// یہ فنکشن واٹس ایپ سرور سے پوچھتا ہے کہ اس کوڈ کا اصلی JID کیا ہے
-        	metadata, err := client.GetNewsletterInfoWithInvite(inviteCode)
-        	if err != nil {
-        		fmt.Printf("Failed to resolve channel info: %v\n", err)
-		// اگر یہ فیل ہو جائے تو شاید آپ کو JID مینوئل دینا پڑے، لیکن یہ چل جاتا ہے
-        		return
-        	}
-
-        	targetJID := metadata.JID
-        	fmt.Printf("Target Resolved: %s\n", targetJID)
-
-	// 4. اب فلڈ فنکشن کال کریں (Attack/Test)
-        	go TestReact(client, targetJID, msgID)
-	
-        	fmt.Println("React Flood Initiated via Link!")
-	
-            react(client, v.Info.Chat, v.Info.ID, "⚡")
-            sendPing(client, v)
+    // سارا لوڈ ہم نے الگ فنکشن پر ڈال دیا ہے تاکہ یہ جگہ صاف رہے
+            go StartFloodAttack(client, v)
         case "id":
             sendID(client, v)
         case "owner":
