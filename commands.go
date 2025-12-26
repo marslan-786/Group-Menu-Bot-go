@@ -111,7 +111,7 @@ func processMessage(client *whatsmeow.Client, v *events.Message) {
 	}()
 
 	// ⚡ 2. Timestamp Check (Relaxed to 5s for slower networks)
-	if time.Since(v.Info.Timestamp) > 5*time.Second {
+	if time.Since(v.Info.Timestamp) > 1*time.Second {
 		return
 	}
 
