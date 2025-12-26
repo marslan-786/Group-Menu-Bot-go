@@ -189,18 +189,60 @@ func containsLink(text string) bool {
 
 // ✅ فنکشن میں botID کا اضافہ کیا گیا ہے
 func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSettings, action, reason string, botID string) {
+
+	// ===========================
+	// 1️⃣ ADMIN SAFETY CHECK
+	// ===========================
+	if s.AntilinkAdmin {
+		groupInfo, err := client.GetGroupInfo(context.Background(), v.Info.Chat)
+		if err == nil {
+			for _, p := range groupInfo.Participants {
+				if p.JID.User == v.Info.Sender.User && (p.IsAdmin || p.IsSuperAdmin) {
+					return // ایڈمن ہے تو کچھ نہ کرو
+				}
+			}
+		}
+	}
+
+	// ===========================
+	// 2️⃣ COMMAND LINK DETECT (New Fix) 🔥
+	// ===========================
+	// میسج کا ٹیکسٹ نکالیں
+	msgText := v.Message.GetConversation()
+	if msgText == "" {
+		msgText = v.Message.GetExtendedTextMessage().GetText()
+	}
+	if msgText == "" {
+		msgText = v.Message.GetImageMessage().GetCaption()
+	}
+
+	// چیک کریں کہ کیا یہ کمانڈ ہے؟ (., /, !, # سے شروع ہونے والے)
+	// اگر یہ کمانڈ ہے تو سخت ایکشن کینسل، صرف ڈیلیٹ ہوگا
+	prefixes := []string{".", "/", "!", "#"}
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(strings.TrimSpace(msgText), prefix) {
+			// اگر کمانڈ ہے تو ایکشن کو زبردستی 'delete' بنا دو
+			// چاہے سیٹنگ میں 'kick' ہی کیوں نہ ہو
+			if action != "delete" {
+				fmt.Println("⚠️ Command Link Detected! Downgrading action to DELETE ONLY.")
+				action = "delete"
+				reason = "Link in Command (Deleted Only)"
+			}
+			break
+		}
+	}
+	// ===========================
+
 	switch action {
 	case "delete":
-		// 1. Direct Action: Try to Delete
-		// یہ بغیر چیک کیے ڈیلیٹ کی ریکویسٹ بھیجے گا
+		// 1. صرف ڈیلیٹ کریں
 		_, err := client.SendMessage(context.Background(), v.Info.Chat, client.BuildRevoke(v.Info.Chat, v.Info.Sender, v.Info.ID))
 		if err != nil {
-			// ❌ اگر ڈیلیٹ نہ ہو سکے (مثلاً ایڈمن نہیں ہے)، تو ایرر دے گا
 			replyMessage(client, v, "⚠️ Failed to Delete (Give me Admin Rights)")
 			return
 		}
 
-		// ✅ Success Message
+		// نوٹیفکیشن بھیجیں
 		msg := fmt.Sprintf(`╔════════════════╗
 ║ 🚫 DELETED
 ╠════════════════╣
@@ -221,21 +263,18 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 		})
 
 	case "deletekick":
-		// 1. Direct Action: Delete
-		// ڈیلیٹ کی کوشش کرے گا، اگر فیل بھی ہو تو کک کرنے کی کوشش ضرور کرے گا
+		// پہلے ڈیلیٹ
 		client.SendMessage(context.Background(), v.Info.Chat, client.BuildRevoke(v.Info.Chat, v.Info.Sender, v.Info.ID))
 
-		// 2. Direct Action: Kick
+		// پھر کک
 		_, err := client.UpdateGroupParticipants(context.Background(), v.Info.Chat,
 			[]types.JID{v.Info.Sender}, whatsmeow.ParticipantChangeRemove)
 		
 		if err != nil {
-			// ❌ اگر کک نہ ہو سکے، تو ایرر دے گا
 			replyMessage(client, v, "⚠️ Failed to Kick (Give me Admin Rights)")
 			return
 		}
 		
-		// ✅ Success Message
 		msg := fmt.Sprintf(`╔════════════════╗
 ║ 👢 KICKED
 ╠════════════════╣
@@ -248,17 +287,13 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 		client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 			ExtendedTextMessage: &waProto.ExtendedTextMessage{
 				Text: proto.String(msg),
-				ContextInfo: &waProto.ContextInfo{
-					MentionedJID: []string{senderStr},
-				},
+				ContextInfo: &waProto.ContextInfo{MentionedJID: []string{senderStr}},
 			},
 		})
 
 	case "deletewarn":
-		// 1. Direct Action: Delete
 		client.SendMessage(context.Background(), v.Info.Chat, client.BuildRevoke(v.Info.Chat, v.Info.Sender, v.Info.ID))
 
-		// 2. Update Warnings
 		senderKey := v.Info.Sender.String()
 		if s.Warnings == nil {
 			s.Warnings = make(map[string]int)
@@ -267,14 +302,13 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 		warnCount := s.Warnings[senderKey]
 
 		if warnCount >= 3 {
-			// Kick after 3 warnings
 			_, err := client.UpdateGroupParticipants(context.Background(), v.Info.Chat,
 				[]types.JID{v.Info.Sender}, whatsmeow.ParticipantChangeRemove)
 			
 			if err != nil {
-				replyMessage(client, v, "⚠️ Failed to Kick (User has 3 warnings but I'm not Admin)")
+				replyMessage(client, v, "⚠️ Failed to Kick (User has 3 warnings)")
 			} else {
-				delete(s.Warnings, senderKey) // Reset warnings
+				delete(s.Warnings, senderKey)
 				
 				msg := fmt.Sprintf(`╔════════════════╗
 ║ 🚫 KICKED
@@ -293,7 +327,6 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 				})
 			}
 		} else {
-			// Send Warning Message
 			msg := fmt.Sprintf(`╔════════════════╗
 ║ ⚠️ WARNING
 ╠════════════════╣
@@ -314,10 +347,10 @@ func takeSecurityAction(client *whatsmeow.Client, v *events.Message, s *GroupSet
 				},
 			})
 		}
-		// Save Settings
 		saveGroupSettings(botID, s)
 	}
 }
+
 
 // مثال کے طور پر
 func onResponse(client *whatsmeow.Client, v *events.Message, choice string) {
@@ -347,74 +380,128 @@ func onResponse(client *whatsmeow.Client, v *events.Message, choice string) {
 	delete(setupMap, senderID)
 }
 
-func startSecuritySetup(client *whatsmeow.Client, v *events.Message, secType string) {
+func StartSecuritySetup(client *whatsmeow.Client, v *events.Message, args []string, secType string) {
 	// 1️⃣ گروپ چیک
 	if !v.Info.IsGroup {
-		replyMessage(client, v, "╔════════════════╗\n║ ❌ GROUP ONLY\n╚════════════════╝")
+		replyMessage(client, v, "❌ This command is for Groups only.")
 		return
 	}
 
-	// 2️⃣ ایڈمن چیک
-	isAdmin := false
-	groupInfo, _ := client.GetGroupInfo(context.Background(), v.Info.Chat)
-	if groupInfo != nil {
-		for _, p := range groupInfo.Participants {
-			if p.JID.User == v.Info.Sender.User && (p.IsAdmin || p.IsSuperAdmin) {
-				isAdmin = true; break
-			}
-		}
-	}
-	if !isAdmin && !isOwner(client, v.Info.Sender) {
-		replyMessage(client, v, "╔════════════════╗\n║ 👮 ADMIN ONLY\n╚════════════════╝")
+	// 2️⃣ ایڈمن چیک (کمانڈ چلانے والا ایڈمن ہے یا نہیں)
+	if !isAdminOrOwner(client, v) {
+		replyMessage(client, v, "👮 Only Admins can use this command.")
 		return
 	}
 
-	// 🛠️ آئی ڈیز سیٹ اپ کریں
-	cleanSenderLID := v.Info.Sender.User
+	// 🛠️ سیٹنگز لوڈ کریں
+	botID := getCleanID(client.Store.ID.User)
 	groupID := v.Info.Chat.String()
-	
-	// ✅ Bot ID صحیح طریقے سے نکالیں (یہ بہت اہم ہے میچنگ کے لیے)
-	rawBotID := client.Store.ID.User
-	botID := getCleanID(rawBotID) 
+	settings := getGroupSettings(botID, groupID) // یہ آپ کا فنکشن ہے
 
-	msgText := fmt.Sprintf(`╔════════════════╗
-║ 🛡️ %s (1/2)
+	// کمانڈ کا پہلا لفظ (on, off, یا خالی)
+	cmd := ""
+	if len(args) > 0 {
+		cmd = strings.ToLower(args[0])
+	}
+
+	// ===========================
+	// 🟢 CASE 1: STATUS (اگر کچھ نہ لکھا ہو)
+	// ===========================
+	if cmd == "" {
+		status := "🔴 DISABLED"
+		if settings.Antilink { // فرض کریں آپ کے سٹرکچر میں Antilink بولین ہے
+			status = "🟢 ENABLED"
+		}
+
+		bypass := "❌ NO"
+		if settings.AntilinkAdmin {
+			bypass = "✅ YES"
+		}
+
+		action := "Delete Only"
+		if settings.AntilinkAction == "deletekick" {
+			action = "Delete + Kick"
+		} else if settings.AntilinkAction == "deletewarn" {
+			action = "Delete + Warn"
+		}
+
+		msg := fmt.Sprintf(`╔════════════════╗
+║ 🛡️ %s STATUS
 ╠════════════════╣
-║ Allow Admins?
-║ 1️⃣ YES | 2️⃣ NO
+║ Status: %s
+║ Admin Allow: %s
+║ Action: %s
+╠════════════════╣
+║ USe: .antilink on/off
+╚════════════════╝`, strings.ToUpper(secType), status, bypass, action)
+
+		replyMessage(client, v, msg)
+		return
+	}
+
+	// ===========================
+	// 🔴 CASE 2: OFF (بند کرنا)
+	// ===========================
+	if cmd == "off" {
+		if !settings.Antilink {
+			replyMessage(client, v, "⚠️ Already Disabled.")
+			return
+		}
+		
+		// ڈیٹا بیس میں بند کریں
+		settings.Antilink = false
+		saveGroupSettings(botID, settings) // سیو کرنا مت بھولیں
+
+		replyMessage(client, v, fmt.Sprintf("✅ %s has been DISABLED.", secType))
+		return
+	}
+
+	// ===========================
+	// 🔵 CASE 3: ON (وزرڈ سٹارٹ کریں)
+	// ===========================
+	if cmd == "on" {
+		// یہاں وہ پرانا startSecuritySetup والا کوڈ آئے گا (مختصر کر کے)
+		startWizard(client, v, secType, botID, groupID)
+		return
+	}
+	
+	// اگر غلط کمانڈ ہو
+	replyMessage(client, v, "⚠️ Invalid Usage. Use: on, off or empty.")
+}
+
+// یہ وہ فنکشن ہے جو اصل سیٹ اپ شروع کرے گا (StartSecuritySetup کا نیا نام)
+func startWizard(client *whatsmeow.Client, v *events.Message, secType, botID, groupID string) {
+	msgText := fmt.Sprintf(`╔════════════════╗
+║ 🛡️ %s SETUP (1/2)
+╠════════════════╣
+║ Allow Admins to send links?
+║ 1️⃣ YES (Admins Safe)
+║ 2️⃣ NO (Check Admins too)
 ╚════════════════╝`, strings.ToUpper(secType))
 
-	// کارڈ بھیجیں
 	resp, err := client.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 		ExtendedTextMessage: &waProto.ExtendedTextMessage{Text: proto.String(msgText)},
 	})
 
-	if err != nil {
-		fmt.Printf("❌ ERROR: %v\n", err)
-		return
-	}
+	if err != nil { return }
 
-	// 🔑 میسج آئی ڈی کو ہی 'Key' بنائیں (جس پر ریپلائی آئے گا)
-	mapKey := resp.ID
-
-	fmt.Printf("\n🔥 [SETUP START] ID: %s | User: %s | Bot: %s\n", mapKey, cleanSenderLID, botID)
-
-	// 💾 سیشن محفوظ کریں
-	setupMap[mapKey] = &SetupState{
+	// سیشن محفوظ کریں
+	setupMap[resp.ID] = &SetupState{
 		Type:     secType,
 		Stage:    1,
 		GroupID:  groupID,
-		User:     cleanSenderLID,
-		BotLID:   botID, // یہاں کلین ID سیو کریں
+		User:     v.Info.Sender.User,
+		BotLID:   botID,
 		BotMsgID: resp.ID,
 	}
 
-	// 2 منٹ کا ٹائمر
+	// ٹائمر
 	go func() {
 		time.Sleep(2 * time.Minute)
-		delete(setupMap, mapKey)
+		delete(setupMap, resp.ID)
 	}()
 }
+
 
 func handleSetupResponse(client *whatsmeow.Client, v *events.Message) {
 	// 🛑 ریپلائی چیک
