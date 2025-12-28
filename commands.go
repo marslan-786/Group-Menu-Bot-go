@@ -35,52 +35,50 @@ var AuthorizedBots = map[string]bool{
 // ہٹا دیئے گئے ہیں کیونکہ وہ اب صرف main.go میں ایک ہی بار ڈیفائن ہوں گے۔
 
 func handler(botClient *whatsmeow.Client, evt interface{}) {
-	// 🛡️ سیف گارڈ (Panic Recovery)
+	// 🛡️ سیف گارڈ: کریش روکنے کے لیے
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("⚠️ [CRASH PREVENTED] Bot %s: %v\n", botClient.Store.ID.User, r)
+			fmt.Printf("⚠️ [CRASH PREVENTED] Bot %s error: %v\n", botClient.Store.ID.User, r)
 		}
 	}()
 
-	if botClient == nil { return }
+	if botClient == nil {
+		return
+	}
 
 	switch v := evt.(type) {
 	
 	case *events.Message:
-		// 🚀 1. ٹائم فلٹر (سب سے اہم)
-		// اگر میسج 10 سیکنڈ سے زیادہ پرانا ہے تو اسے اگنور کریں (Backlog Skip)
-		// اس سے بوٹ کبھی "لیٹ" جواب نہیں دے گا، یا تو دے گا یا نہیں دے گا۔
-		msgTime := v.Info.Timestamp
-		if time.Since(msgTime) > 10*time.Second {
-			// پرانے میسجز کو چھوڑ دیں تاکہ بوٹ فریش میسجز پر فوکس کرے
-			return 
+		// 🔥 سب سے اہم فلٹر (یہاں آپ کا 4 منٹ والا مسئلہ حل ہوگا)
+		// چیک کریں کہ میسج کتنی دیر پہلے آیا تھا
+		msgAge := time.Since(v.Info.Timestamp).Seconds()
+
+		if msgAge > 3.0 {
+			// اگر میسج 3 سیکنڈ سے زیادہ پرانا ہے تو اسے فوراً چھوڑ دیں
+			// fmt.Printf("🗑️ [IGNORED] Old message: %.1fs ago\n", msgAge)
+			return
 		}
 
-		// 🚫 2. فضول چیٹس اگنور کریں
-		// اسٹیٹس (Stories) اور بوٹ کے اپنے میسجز کو پروسیس نہ کریں
+		// 🚫 اسٹیٹس اور اپنے میسجز کو اگنور کریں
 		if v.Info.IsFromMe || v.Info.Chat.String() == "status@broadcast" {
 			return
 		}
 
-		// ⚡ 3. گوروٹین (بیک گراؤنڈ پروسیس)
-		// اب یہ صرف "تازہ" اور "کام کے" میسجز کے لیے چلے گا
+		// ✅ اب صرف تازہ میسج بچا ہے، اسے بیک گراؤنڈ میں پروسیس کریں
 		go processMessage(botClient, v)
 
-	case *events.Receipt:
-		// 🛑 رسیدیں (Blue Ticks) گروپس میں طوفان لاتی ہیں، انہیں یہاں پکڑ کر ضائع کر دیں
-		return 
-
-	case *events.Presence:
-		// 🛑 ٹائپنگ انڈیکیٹر کو بھی اگنور کریں
-		return
-
 	case *events.GroupInfo:
+		// گروپ کی انفارمیشن چینج کو ہینڈل کریں
 		go handleGroupInfoChange(botClient, v)
 
 	case *events.Connected:
-		fmt.Printf("🟢 [ONLINE] Bot %s is ready!\n", botClient.Store.ID.User)
+		fmt.Printf("🟢 [ONLINE] Bot %s connected!\n", botClient.Store.ID.User)
+		
+	case *events.LoggedOut:
+		fmt.Printf("🔴 [LOGGED OUT] Bot %s\n", botClient.Store.ID.User)
 	}
 }
+
 
 func isKnownCommand(text string) bool {
 	commands := []string{
